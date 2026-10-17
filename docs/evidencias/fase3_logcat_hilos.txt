@@ -1,0 +1,39 @@
+EVIDENCIA FASE 3 - MVVM (UI -> ViewModel -> Repository -> Room). Logcat filtrado por tag:HILOS
+Fecha: 17/10/2026 - Emulador Medium Phone API 37.0
+
+--- Prueba 1: operaciones desde el ViewModel ---
+[main] MainActivity: onCreate
+[DefaultDispatcher-worker-3] Repository: leyendo historial de Room (2 filas)
+[main] ViewModel: click en Depósito
+[DefaultDispatcher-worker-3] Repository: insertando Depósito en Room
+[DefaultDispatcher-worker-2] Repository: leyendo historial de Room (3 filas)
+[main] ViewModel: guardado id=3, actualizando la UI
+[main] ViewModel: click en Pago de servicio
+[DefaultDispatcher-worker-2] Repository: insertando Pago de servicio en Room
+[main] ViewModel: guardado id=4, actualizando la UI
+[DefaultDispatcher-worker-2] Repository: leyendo historial de Room (4 filas)
+
+--- Prueba 2: tres depósitos seguidos ---
+[main] ViewModel: click en Depósito
+[DefaultDispatcher-worker-3] Repository: insertando Depósito en Room
+[DefaultDispatcher-worker-5] Repository: leyendo historial de Room (5 filas)
+[main] ViewModel: guardado id=5, actualizando la UI
+[main] ViewModel: click en Depósito
+[DefaultDispatcher-worker-5] Repository: insertando Depósito en Room
+[main] ViewModel: guardado id=6, actualizando la UI
+[DefaultDispatcher-worker-5] Repository: leyendo historial de Room (6 filas)
+[main] ViewModel: click en Depósito
+[DefaultDispatcher-worker-5] Repository: insertando Depósito en Room
+[main] ViewModel: guardado id=7, actualizando la UI
+[DefaultDispatcher-worker-6] Repository: leyendo historial de Room (7 filas)
+
+--- Prueba 3: rotar a horizontal y volver a vertical (saldo antes: $1,280.75) ---
+[main] MainActivity: onCreate      <- la Activity se destruye y se recrea al rotar
+[main] MainActivity: onCreate      <- y otra vez al volver a vertical
+(No hay nuevas lecturas de Room ni se reinicia el saldo: el ViewModel SOBREVIVIÓ.)
+Saldo después de rotar: $1,280.75 (ver fase3_rotacion.png)
+
+INTERPRETACIÓN:
+- ViewModel (clicks y actualización de estado) -> main.
+- Repository (Room) -> DefaultDispatcher-worker-N (Dispatchers.IO).
+- La Activity se recrea al rotar, pero el ViewModel conserva saldo e historial.
