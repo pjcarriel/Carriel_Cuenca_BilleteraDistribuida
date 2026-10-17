@@ -24,5 +24,7 @@ val VerdeIngreso = Color(0xFF2E7D32)
 val RojoEgreso = Color(0xFFC62828)
 // Verde brillante del círculo "En línea".
 val VerdeEnLinea = Color(0xFF22C55E)
+// Ámbar del círculo "Conectando..." (intentando abrir o reabrir el WebSocket).
+val AmbarConectando = Color(0xFFF59E0B)
 // Rojo del círculo "Desconectado".
 val RojoDesconectado = Color(0xFFEF4444)

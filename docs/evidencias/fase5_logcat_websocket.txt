@@ -1,0 +1,50 @@
+EVIDENCIA FASE 5 - WebSocket en tiempo real (Logcat tag:HILOS de la app y log del servidor)
+Fecha: 17/10/2026 - Emulador Android 17 - Servidor ws://10.0.2.2:8090/ws/1001
+Nota: el reloj del emulador y el de la PC no están sincronizados al milisegundo; las latencias
+se miden DENTRO de cada equipo.
+
+--- 1. Al abrir la app: REST + apertura del túnel ---
+[main] ViewModel: sincronizando saldo con el servidor
+[DefaultDispatcher-worker-4] Repository: GET /cuentas/1001 (Retrofit)
+[DefaultDispatcher-worker-3] Repository: abriendo WebSocket (intento 1)
+[OkHttp http://10.0.2.2:8090/...] WebSocket: túnel ABIERTO con ws://10.0.2.2:8090/ws/1001
+[OkHttp http://10.0.2.2:8090/...] WebSocket: mensaje recibido {"tipo":"CONECTADO","cuenta":"1001","saldo":1279.6}
+Servidor: [DefaultDispatcher-worker-5] WebSocket CONECTADO: cuenta 1001 (conexiones de esa cuenta: 1)
+Pantalla: indicador verde "En línea".
+
+--- 2. "Postman" (otra cuenta) transfiere: POST /transferir {"cuentaOrigen":"1002","cuentaDestino":"1001","monto":25} ---
+Servidor 11:32:12.200 [DefaultDispatcher-worker-9] Transferencia de 25.00: 1002 -> 1001
+Servidor 11:32:12.216 [DefaultDispatcher-worker-9] Notificación TRANSFERENCIA_RECIBIDA enviada a la cuenta 1001
+App 16:32:11.7797 [OkHttp ...] WebSocket: mensaje recibido {"tipo":"TRANSFERENCIA_RECIBIDA","cuenta":"1001","saldo":1304.6,"cuentaOrigen":"1002","monto":25.0,"transaccionId":9}
+App 16:32:11.7791 [DefaultDispatcher-worker-1] Repository: guardando transferencia recibida en Room (saldo nuevo 1304.6)
+App 16:32:11.7835 [DefaultDispatcher-worker-5] Repository: leyendo historial de Room (4 filas)
+App 16:32:11.7840 [main] ViewModel: transferencia recibida en tiempo real
+-> Del mensaje recibido a la pantalla actualizada: ~5 ms. Saldo 1,279.60 -> 1,304.60 SIN tocar la app.
+   Snackbar: "Recibiste $ 25.00 (De la cuenta 1002)". (fase5_tiempo_real.png)
+
+--- 3. Servidor APAGADO: detección y reconexión automática con backoff ---
+[OkHttp ...] WebSocket: FALLO SocketException: Connection reset
+[DefaultDispatcher-worker-3] Repository: WebSocket caído (SocketException)
+[DefaultDispatcher-worker-3] Repository: reintento de WebSocket en 1 s
+[DefaultDispatcher-worker-3] Repository: abriendo WebSocket (intento 2)
+[OkHttp ...] WebSocket: FALLO ConnectException: Failed to connect to /10.0.2.2:8090
+[DefaultDispatcher-worker-8] Repository: reintento de WebSocket en 2 s
+[DefaultDispatcher-worker-8] Repository: abriendo WebSocket (intento 3)
+[OkHttp ...] WebSocket: FALLO ConnectException: Failed to connect to /10.0.2.2:8090
+[DefaultDispatcher-worker-8] Repository: reintento de WebSocket en 4 s
+Pantalla: indicador rojo "Desconectado"; el saldo y el historial siguen visibles (Room).
+
+--- 4. Servidor ENCENDIDO de nuevo ---
+Servidor 11:32:54.172 Responding at http://127.0.0.1:8090
+Servidor 11:32:54.680 WebSocket CONECTADO: cuenta 1001   <- la app se reconectó sola (0,5 s después)
+Pantalla: indicador verde "En línea" (fase5_reconexion.png)
+
+--- 5. Transferencia DESPUÉS de reconectar: 1003 -> 1001, $10 ---
+[OkHttp ...] WebSocket: mensaje recibido {"tipo":"TRANSFERENCIA_RECIBIDA","cuenta":"1001","saldo":1314.6,"cuentaOrigen":"1003","monto":10.0,"transaccionId":10}
+[DefaultDispatcher-worker-1] Repository: guardando transferencia recibida en Room (saldo nuevo 1314.6)
+[main] ViewModel: transferencia recibida en tiempo real
+
+HILOS:
+  OkHttp ...                  -> callbacks del WebSocket (hilo propio de OkHttp)
+  DefaultDispatcher-worker-N  -> Repository: bucle de conexión, Room (Dispatchers.IO)
+  main                        -> ViewModel y pantalla

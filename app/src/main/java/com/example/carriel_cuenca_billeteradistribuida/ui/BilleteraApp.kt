@@ -32,7 +32,7 @@ fun BilleteraApp(viewModel: BilleteraViewModel = viewModel(factory = BilleteraVi
 
     // Leemos cada StateFlow del ViewModel como estado de Compose.
     val saldo by viewModel.saldo.collectAsStateWithLifecycle()
-    val enLinea by viewModel.enLinea.collectAsStateWithLifecycle()
+    val estadoConexion by viewModel.estadoConexion.collectAsStateWithLifecycle()
     val historial by viewModel.historial.collectAsStateWithLifecycle()
     val estado by viewModel.estado.collectAsStateWithLifecycle()
 
@@ -46,13 +46,13 @@ fun BilleteraApp(viewModel: BilleteraViewModel = viewModel(factory = BilleteraVi
     val contexto = LocalContext.current
     // Lanzador del diálogo del SISTEMA que pide un permiso. La lambda recibe la respuesta del usuario.
     val pedirPermiso = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { concedido ->
-        if (concedido) viewModel.sincronizarSaldo()      // Ya podemos hablar con el servidor.
+        if (concedido) viewModel.iniciarConexion()       // Ya podemos hablar con el servidor (REST + WebSocket).
         else viewModel.permisoRedLocalDenegado()        // Sin permiso: solo datos locales.
     }
     // LaunchedEffect(Unit): se ejecuta UNA vez al mostrar la pantalla (y al recrearla, ej. al rotar).
     LaunchedEffect(Unit) {
         if (necesitaPermisoRedLocal(contexto)) pedirPermiso.launch(PERMISO_RED_LOCAL)  // Muestra el diálogo.
-        else viewModel.sincronizarSaldo()                                              // Ya concedido: sincronizar.
+        else viewModel.iniciarConexion()                                               // Ya concedido: conectar.
     }
 
     // Cada vez que "estado" cambia, mostramos el mensaje correspondiente.
@@ -81,7 +81,7 @@ fun BilleteraApp(viewModel: BilleteraViewModel = viewModel(factory = BilleteraVi
             }
             DashboardScreen(
                 saldo = saldo,
-                enLinea = enLinea,
+                estadoConexion = estadoConexion,
                 movimientos = historial,
                 // Al tocar un botón, solo ABRIMOS el diálogo de ese tipo.
                 onAccionClick = { tipo -> dialogoAbierto = tipo },

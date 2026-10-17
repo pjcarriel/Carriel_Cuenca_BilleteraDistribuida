@@ -10,7 +10,10 @@ import com.example.carriel_cuenca_billeteradistribuida.data.BilleteraRepository
 import com.example.carriel_cuenca_billeteradistribuida.data.Resultado
 import com.example.carriel_cuenca_billeteradistribuida.data.local.BilleteraDatabase
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.RetrofitClient
+import com.example.carriel_cuenca_billeteradistribuida.data.remote.WebSocketCliente
+import com.example.carriel_cuenca_billeteradistribuida.model.EstadoConexion
 import com.example.carriel_cuenca_billeteradistribuida.model.EstadoOperacion
+import kotlinx.coroutines.Job                                  // Referencia a una corrutina lanzada.
 import com.example.carriel_cuenca_billeteradistribuida.model.Movimiento
 import com.example.carriel_cuenca_billeteradistribuida.model.Solicitud
 import com.example.carriel_cuenca_billeteradistribuida.util.logHilo
@@ -40,17 +43,45 @@ class BilleteraViewModel(
     val saldo: StateFlow<Double?> = repositorio.observarSaldo()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    // Estado del WebSocket: siempre false hasta la Fase 5.
-    private val _enLinea = MutableStateFlow(false)
-    val enLinea: StateFlow<Boolean> = _enLinea.asStateFlow()
+    // Estado del túnel WebSocket (EN_LINEA / CONECTANDO / DESCONECTADO), directo del Repository.
+    val estadoConexion: StateFlow<EstadoConexion> = repositorio.estadoConexion
 
     // Estado de la última operación (Procesando muestra la barra de progreso; Exito/Error, un mensaje).
     private val _estado = MutableStateFlow<EstadoOperacion>(EstadoOperacion.Inactivo)
     val estado: StateFlow<EstadoOperacion> = _estado.asStateFlow()
 
+    // Corrutina que mantiene vivo el WebSocket. "Job?" = null mientras no se haya iniciado.
+    private var trabajoTiempoReal: Job? = null
+
+    // "init" se ejecuta una vez al crear el ViewModel.
+    init {
+        // Escuchamos los avisos de transferencias recibidas por WebSocket y mostramos un mensaje.
+        // (El saldo y el historial NO se tocan aquí: ya se actualizaron solos desde Room).
+        viewModelScope.launch {
+            repositorio.transferenciasRecibidas.collect { movimiento ->
+                logHilo("ViewModel: transferencia recibida en tiempo real")              // main
+                _estado.value = EstadoOperacion.Exito(
+                    "Recibiste ${formatearMonto(movimiento.monto)} (${movimiento.detalle})"
+                )
+            }
+        }
+    }
+
     // ---------------- ACCIONES ----------------
-    // Nota: el saldo NO se pide al crear el ViewModel, sino cuando la pantalla lo indica,
+    // Nota: la conexión NO se inicia al crear el ViewModel, sino cuando la pantalla lo indica,
     // porque en Android 17 primero hay que obtener el permiso de red local (ver BilleteraApp).
+
+    // Inicia la comunicación con el servidor: sincroniza el saldo por REST y abre el WebSocket.
+    fun iniciarConexion() {
+        sincronizarSaldo()
+        // "?." + "!= true": si nunca se inició (null) o ya terminó, lo lanzamos (evita abrir dos túneles).
+        if (trabajoTiempoReal?.isActive != true) {
+            trabajoTiempoReal = viewModelScope.launch {
+                // Esta corrutina vive mientras viva el ViewModel; al destruirse, se cancela y cierra el túnel.
+                repositorio.mantenerTiempoReal()
+            }
+        }
+    }
 
     // El usuario negó el permiso de red local: la app funciona solo con los datos guardados.
     fun permisoRedLocalDenegado() {
@@ -105,11 +136,12 @@ class BilleteraViewModel(
             initializer {
                 val app = checkNotNull(this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY])
                 val db = BilleteraDatabase.obtener(app)
-                // Armamos la cadena a mano: Room (2 DAOs) + Retrofit -> Repository -> ViewModel.
+                // Armamos la cadena a mano: Room (2 DAOs) + Retrofit + WebSocket -> Repository -> ViewModel.
                 val repositorio = BilleteraRepository(
                     movimientoDao = db.movimientoDao(),
                     cuentaDao = db.cuentaDao(),
-                    api = RetrofitClient.api
+                    api = RetrofitClient.api,
+                    webSocket = WebSocketCliente(RetrofitClient.clienteHttp)
                 )
                 BilleteraViewModel(repositorio)
             }

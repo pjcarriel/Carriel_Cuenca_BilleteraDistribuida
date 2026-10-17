@@ -42,9 +42,11 @@ import androidx.compose.ui.tooling.preview.Preview            // Vista previa en
 import androidx.compose.ui.unit.dp                            // Unidad de tamaño en pantalla.
 import androidx.compose.ui.unit.sp                            // Unidad de tamaño de letra.
 // Nuestros modelos.
+import com.example.carriel_cuenca_billeteradistribuida.model.EstadoConexion
 import com.example.carriel_cuenca_billeteradistribuida.model.Movimiento
 import com.example.carriel_cuenca_billeteradistribuida.model.TipoOperacion
 // Nuestro tema y colores.
+import com.example.carriel_cuenca_billeteradistribuida.ui.theme.AmbarConectando
 import com.example.carriel_cuenca_billeteradistribuida.ui.theme.AzulTarjeta
 import com.example.carriel_cuenca_billeteradistribuida.ui.theme.AzulTarjetaClaro
 import com.example.carriel_cuenca_billeteradistribuida.ui.theme.Carriel_Cuenca_BilleteraDistribuidaTheme
@@ -68,7 +70,7 @@ import java.util.Locale
 @Composable
 fun DashboardScreen(
     saldo: Double?,                             // Saldo de la tarjeta (null = aún desconocido).
-    enLinea: Boolean,                           // true = WebSocket conectado.
+    estadoConexion: EstadoConexion,             // Estado del WebSocket (verde/ámbar/rojo).
     movimientos: List<Movimiento>,              // Historial a mostrar.
     // LAMBDA: una función que se pasa como parámetro.
     // "(TipoOperacion) -> Unit" = recibe un TipoOperacion y no devuelve nada.
@@ -84,7 +86,7 @@ fun DashboardScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp)      // 12dp de espacio entre cada elemento.
     ) {
         // "item { }" = agrega UN elemento fijo a la lista.
-        item { TarjetaSaldo(saldo = saldo, enLinea = enLinea) }
+        item { TarjetaSaldo(saldo = saldo, estadoConexion = estadoConexion) }
 
         // El panel con los 4 botones.
         item { PanelAcciones(onAccionClick = onAccionClick) }
@@ -117,7 +119,7 @@ fun DashboardScreen(
 // TARJETA DE SALDO (parte superior)
 // =====================================================================
 @Composable
-fun TarjetaSaldo(saldo: Double?, enLinea: Boolean) {
+fun TarjetaSaldo(saldo: Double?, estadoConexion: EstadoConexion) {
     // Card = tarjeta con esquinas redondeadas y sombra.
     Card(
         modifier = Modifier.fillMaxWidth(),                              // Todo el ancho.
@@ -138,7 +140,7 @@ fun TarjetaSaldo(saldo: Double?, enLinea: Boolean) {
                 verticalAlignment = Alignment.CenterVertically           // Centrados verticalmente.
             ) {
                 Text("Saldo actual", color = Color.White.copy(alpha = 0.8f)) // Blanco algo transparente.
-                IndicadorConexion(enLinea = enLinea)
+                IndicadorConexion(estado = estadoConexion)
             }
             Spacer(Modifier.height(12.dp))                               // Espacio vertical.
             // El saldo en NÚMEROS GRANDES, como pide el enunciado.
@@ -155,13 +157,17 @@ fun TarjetaSaldo(saldo: Double?, enLinea: Boolean) {
 }
 
 // =====================================================================
-// INDICADOR DEL WEBSOCKET: círculo verde "En línea" o rojo "Desconectado"
+// INDICADOR DEL WEBSOCKET: verde "En línea", ámbar "Conectando..." o rojo "Desconectado"
 // =====================================================================
 @Composable
-fun IndicadorConexion(enLinea: Boolean) {
-    // "if" en Kotlin es una EXPRESIÓN: devuelve un valor que guardamos en una variable.
-    val color = if (enLinea) VerdeEnLinea else RojoDesconectado
-    val texto = if (enLinea) "En línea" else "Desconectado"
+fun IndicadorConexion(estado: EstadoConexion) {
+    // "when" como EXPRESIÓN que devuelve un PAR (color, texto); "val (a, b) =" lo separa.
+    // Como EstadoConexion es un enum, Kotlin obliga a cubrir los tres casos.
+    val (color, texto) = when (estado) {
+        EstadoConexion.EN_LINEA -> VerdeEnLinea to "En línea"
+        EstadoConexion.CONECTANDO -> AmbarConectando to "Conectando..."
+        EstadoConexion.DESCONECTADO -> RojoDesconectado to "Desconectado"
+    }
 
     // Una "píldora" blanca semitransparente que contiene el círculo y el texto.
     Row(
@@ -345,7 +351,7 @@ fun DashboardPreview() {
     Carriel_Cuenca_BilleteraDistribuidaTheme {
         DashboardScreen(
             saldo = DatosDePrueba.saldo,
-            enLinea = true,
+            estadoConexion = EstadoConexion.EN_LINEA,
             movimientos = DatosDePrueba.movimientos,
             onAccionClick = { }        // Lambda vacía: en la vista previa no hacemos nada.
         )

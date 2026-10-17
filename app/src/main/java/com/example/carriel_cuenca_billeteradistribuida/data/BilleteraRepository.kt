@@ -8,36 +8,66 @@ import com.example.carriel_cuenca_billeteradistribuida.data.local.aEntidad
 import com.example.carriel_cuenca_billeteradistribuida.data.local.aModelo
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.BilleteraApi
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.ConfigServidor
+import com.example.carriel_cuenca_billeteradistribuida.data.remote.EventoSocket
+import com.example.carriel_cuenca_billeteradistribuida.data.remote.WebSocketCliente
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.ErrorRespuestaDto
+import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.EventoWebSocketDto
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.OperacionRespuestaDto
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.OperacionSimpleRequest
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.PagoServicioRequest
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.TransferenciaRequest
 import com.example.carriel_cuenca_billeteradistribuida.model.CATEGORIA_SERVICIO_BASICO
+import com.example.carriel_cuenca_billeteradistribuida.model.EstadoConexion
 import com.example.carriel_cuenca_billeteradistribuida.model.Movimiento
 import com.example.carriel_cuenca_billeteradistribuida.model.Solicitud
+import com.example.carriel_cuenca_billeteradistribuida.model.TipoOperacion
 import com.example.carriel_cuenca_billeteradistribuida.util.logHilo
-import com.google.gson.Gson                    // Para leer el JSON de las respuestas de error.
+import com.google.gson.Gson                    // Para leer JSON (errores y mensajes del WebSocket).
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers          // Dispatchers.IO = hilos para disco y red.
+import kotlinx.coroutines.delay                // Espera SIN bloquear el hilo.
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.isActive             // ¿La corrutina sigue viva (no cancelada)?
 import kotlinx.coroutines.withContext
 import retrofit2.HttpException                 // Error HTTP (400, 404, 409, 500...).
 import java.io.IOException                     // Error de red (servidor apagado, sin internet).
 
+// Tiempo máximo de espera entre reintentos de conexión del WebSocket (10 segundos).
+private const val ESPERA_MAXIMA_MS = 10_000L
+
 // REPOSITORIO: el ÚNICO lugar de la app que sabe DE DÓNDE vienen los datos.
-// Desde la Fase 4 combina dos fuentes:
+// Combina tres fuentes:
 //   - Room (local): historial de comprobantes y último saldo conocido.
-//   - Retrofit (remoto): el servidor, que es la "verdad" del saldo.
+//   - Retrofit (REST): operaciones que ENVÍA el usuario.
+//   - WebSocket: transferencias que RECIBE el usuario en tiempo real.
 // REGLA DE ESTE ARCHIVO: todo trabajo de disco/red se hace en Dispatchers.IO.
 class BilleteraRepository(
     private val movimientoDao: MovimientoDao,        // Tabla de movimientos (Room).
     private val cuentaDao: CuentaDao,                // Tabla del último saldo (Room).
-    private val api: BilleteraApi,                   // Servidor (Retrofit).
+    private val api: BilleteraApi,                   // Servidor REST (Retrofit).
+    private val webSocket: WebSocketCliente,         // Servidor en tiempo real (WebSocket).
     private val cuenta: String = ConfigServidor.CUENTA_APP   // Cuenta de esta app ("1001").
 ) {
+
+    private val gson = Gson()
+
+    // Estado del túnel WebSocket (lo observa el indicador verde/rojo de la pantalla).
+    private val _estadoConexion = MutableStateFlow(EstadoConexion.DESCONECTADO)
+    val estadoConexion: StateFlow<EstadoConexion> = _estadoConexion.asStateFlow()
+
+    // Aviso de cada transferencia recibida (para mostrar "Recibiste $..." en pantalla).
+    // SharedFlow = flujo de EVENTOS (a diferencia de StateFlow, no guarda un "valor actual").
+    // extraBufferCapacity: si llegan varias seguidas, se guardan hasta 10 sin perderse.
+    private val _transferenciasRecibidas = MutableSharedFlow<Movimiento>(extraBufferCapacity = 10)
+    val transferenciasRecibidas: SharedFlow<Movimiento> = _transferenciasRecibidas.asSharedFlow()
 
     // ---------------------------- LECTURAS (Flow) ----------------------------
 
@@ -50,10 +80,72 @@ class BilleteraRepository(
             }
             .flowOn(Dispatchers.IO)                  // Consulta y conversión en hilo IO.
 
-    // Saldo: también viene de Room. Cuando el servidor responde, lo guardamos en Room
-    // y este Flow avisa a la pantalla. Así hay UNA sola fuente para la UI.
+    // Saldo: también viene de Room; REST y WebSocket lo actualizan ahí y este Flow avisa a la UI.
     fun observarSaldo(): Flow<Double?> =
         cuentaDao.observarSaldo(cuenta).flowOn(Dispatchers.IO)
+
+    // ---------------------------- TIEMPO REAL (WebSocket) ----------------------------
+
+    // Mantiene el túnel WebSocket abierto MIENTRAS la corrutina que lo llama siga viva.
+    // Si el túnel se cae, espera un poco y lo vuelve a abrir (RECONEXIÓN AUTOMÁTICA).
+    // La espera crece en cada intento fallido: 1 s, 2 s, 4 s, 8 s, 10 s, 10 s... ("backoff exponencial"),
+    // para no saturar a un servidor que está caído.
+    suspend fun mantenerTiempoReal() = withContext(Dispatchers.IO) {
+        var intentosFallidos = 0
+        while (isActive) {                           // Hasta que el ViewModel se destruya.
+            _estadoConexion.value = EstadoConexion.CONECTANDO
+            logHilo("Repository: abriendo WebSocket (intento ${intentosFallidos + 1})")
+            try {
+                // collect se queda aquí ESCUCHANDO mientras el túnel siga abierto.
+                webSocket.escuchar(ConfigServidor.URL_WEBSOCKET + cuenta).collect { evento ->
+                    when (evento) {
+                        EventoSocket.Abierto -> {
+                            _estadoConexion.value = EstadoConexion.EN_LINEA
+                            intentosFallidos = 0     // Conectó: reiniciamos la espera.
+                        }
+                        is EventoSocket.Mensaje -> procesarMensaje(evento.texto)
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e                              // Cancelación: salimos del bucle sin reintentar.
+            } catch (e: Exception) {
+                logHilo("Repository: WebSocket caído (${e.javaClass.simpleName})")
+            }
+            // Si llegamos aquí, el túnel se cerró o falló.
+            _estadoConexion.value = EstadoConexion.DESCONECTADO
+            intentosFallidos++
+            // "shl" = desplazamiento de bits: 1000 shl 2 = 4000. coerceAtMost pone el tope de 10 s.
+            val espera = (1000L shl (intentosFallidos - 1).coerceAtMost(4)).coerceAtMost(ESPERA_MAXIMA_MS)
+            logHilo("Repository: reintento de WebSocket en ${espera / 1000} s")
+            delay(espera)                            // Espera SIN bloquear el hilo.
+        }
+    }
+
+    // Interpreta un mensaje JSON del servidor.
+    private suspend fun procesarMensaje(texto: String) {
+        // Si el JSON viene mal formado, lo ignoramos (getOrNull devuelve null y "?: return" sale).
+        val evento = runCatching { gson.fromJson(texto, EventoWebSocketDto::class.java) }.getOrNull() ?: return
+        when (evento.tipo) {
+            // Al conectarse, el servidor manda el saldo actual: sincronizamos sin pedirlo por REST.
+            "CONECTADO" -> guardarSaldo(evento.saldo)
+
+            // ¡Alguien nos envió dinero! Guardamos el comprobante y el saldo nuevo en Room.
+            // La pantalla se actualiza SOLA porque observa Room con Flow.
+            "TRANSFERENCIA_RECIBIDA" -> {
+                val movimiento = Movimiento(
+                    tipo = TipoOperacion.TRANSFERENCIA_RECIBIDA,
+                    monto = evento.monto ?: 0.0,     // "?:" valor alterno si viniera null.
+                    fechaHora = evento.fecha,
+                    detalle = "De la cuenta ${evento.cuentaOrigen ?: "desconocida"}"
+                )
+                logHilo("Repository: guardando transferencia recibida en Room (saldo nuevo ${evento.saldo})")
+                movimientoDao.insertar(movimiento.aEntidad())
+                guardarSaldo(evento.saldo)
+                _transferenciasRecibidas.emit(movimiento)    // Avisamos al ViewModel.
+            }
+            else -> logHilo("Repository: mensaje WebSocket ignorado (${evento.tipo})")
+        }
+    }
 
     // ---------------------------- SERVIDOR (REST) ----------------------------
 
@@ -73,7 +165,6 @@ class BilleteraRepository(
     suspend fun ejecutar(solicitud: Solicitud): Resultado<OperacionRespuestaDto> = withContext(Dispatchers.IO) {
         llamarServidor {
             // "when" sobre una sealed interface: Kotlin obliga a cubrir las 4 solicitudes.
-            // Dentro de cada rama, "solicitud" ya es del tipo exacto (smart cast) y podemos leer sus campos.
             val respuesta = when (solicitud) {
                 is Solicitud.Deposito -> {
                     logHilo("Repository: POST /depositar (Retrofit)")
@@ -103,8 +194,6 @@ class BilleteraRepository(
     // ---------------------------- AYUDANTES PRIVADOS ----------------------------
 
     // Ejecuta un bloque que habla con el servidor y convierte CUALQUIER fallo en Resultado.Error.
-    // "<T>" genérico: sirve tanto para el saldo (Double) como para una operación.
-    // "suspend () -> T" = lambda suspendible (puede llamar a Retrofit dentro).
     private suspend fun <T> llamarServidor(bloque: suspend () -> T): Resultado<T> =
         try {
             Resultado.Exito(bloque())
@@ -123,10 +212,8 @@ class BilleteraRepository(
 
     // Lee el JSON de error del servidor ({"codigo":..., "mensaje":...}) para mostrar su mensaje.
     private fun leerMensajeDeError(e: HttpException): String {
-        val cuerpo = e.response()?.errorBody()?.string()     // "?." en cadena: si algo es null, todo es null.
-        // runCatching: si el cuerpo no es un JSON válido, getOrNull() devuelve null en vez de fallar.
-        val error = runCatching { Gson().fromJson(cuerpo, ErrorRespuestaDto::class.java) }.getOrNull()
-        // Si el servidor mandó un mensaje lo usamos; si no, un texto según el código HTTP.
+        val cuerpo = e.response()?.errorBody()?.string()
+        val error = runCatching { gson.fromJson(cuerpo, ErrorRespuestaDto::class.java) }.getOrNull()
         return error?.mensaje ?: when (e.code()) {
             409 -> "Saldo insuficiente"
             404 -> "La cuenta no existe"
@@ -146,7 +233,6 @@ class BilleteraRepository(
             is Solicitud.Transferencia -> "A la cuenta ${solicitud.cuentaDestino}"
             is Solicitud.PagoServicio -> "${solicitud.servicio} - Contrato ${solicitud.contrato}"
         },
-        // Solo los pagos de servicio llevan la categoría "Servicio Básico".
         categoria = if (solicitud is Solicitud.PagoServicio) CATEGORIA_SERVICIO_BASICO else null
     )
 

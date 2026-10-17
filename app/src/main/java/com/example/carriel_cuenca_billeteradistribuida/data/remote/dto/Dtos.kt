@@ -46,6 +46,20 @@ data class OperacionRespuestaDto(
     val mensaje: String         // Texto para mostrar al usuario.
 )
 
+// Mensaje que llega por el WEBSOCKET (no por REST).
+// tipo = "CONECTADO" -> al abrir el túnel, con el saldo actual.
+// tipo = "TRANSFERENCIA_RECIBIDA" -> otra cuenta nos envió dinero.
+// Los campos con "?" no vienen en todos los mensajes (CONECTADO no trae cuentaOrigen ni monto).
+data class EventoWebSocketDto(
+    val tipo: String,
+    val cuenta: String,
+    val saldo: Double,              // Saldo actualizado de NUESTRA cuenta.
+    val cuentaOrigen: String?,      // Quién envió el dinero.
+    val monto: Double?,             // Cuánto envió.
+    val transaccionId: Long?,
+    val fecha: Long
+)
+
 // Cuerpo de las respuestas de ERROR (400, 404, 409).
 // JSON: {"codigo":"SALDO_INSUFICIENTE","mensaje":"Saldo insuficiente: ..."}
 data class ErrorRespuestaDto(
