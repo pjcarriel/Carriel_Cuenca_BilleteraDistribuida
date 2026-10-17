@@ -28,5 +28,9 @@ data class Movimiento(
 
     // "String?" = NULL SAFETY: el signo "?" indica que puede no tener valor (null).
     // Solo los pagos de servicio tendrán categoría ("Servicio Básico"); los demás quedan en null.
-    val categoria: String? = null
+    val categoria: String? = null,
+
+    // Id del comprobante en el SERVIDOR (MySQL). Sirve para no duplicar un movimiento
+    // que llega dos veces (por WebSocket y al descargar el historial). null = sin id del servidor.
+    val transaccionId: Long? = null
 )

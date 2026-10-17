@@ -7,10 +7,11 @@ import androidx.room.Room                // Constructor de bases de datos Room.
 import androidx.room.RoomDatabase        // Clase base de toda base de datos Room.
 
 // @Database describe la base de datos:
-//   entities = las tablas que contiene: "movimientos" y "cuenta_local" (último saldo conocido).
-//   version = número de versión. Pasó de 1 a 2 en la Fase 4 porque se agregó la tabla cuenta_local.
+//   entities = las tablas: "movimientos", "cuenta_local" (último saldo conocido) y "sesion".
+//   version = número de versión: 2 en la Fase 4 (cuenta_local) y 3 en la Fase 6.5 (sesión y
+//   movimientos por cuenta).
 //   exportSchema = false: no exportar el esquema a un archivo JSON (no lo necesitamos).
-@Database(entities = [MovimientoEntity::class, CuentaLocalEntity::class], version = 2, exportSchema = false)
+@Database(entities = [MovimientoEntity::class, CuentaLocalEntity::class, SesionEntity::class], version = 3, exportSchema = false)
 // "abstract" = clase incompleta: KSP genera la versión completa ("BilleteraDatabase_Impl").
 abstract class BilleteraDatabase : RoomDatabase() {
 
@@ -19,6 +20,9 @@ abstract class BilleteraDatabase : RoomDatabase() {
 
     // DAO de la tabla del último saldo conocido.
     abstract fun cuentaDao(): CuentaDao
+
+    // DAO de la sesión guardada.
+    abstract fun sesionDao(): SesionDao
 
     // "companion object" = lo que va aquí pertenece a la CLASE, no a un objeto.
     // Se usa así: BilleteraDatabase.obtener(context)  (parecido a "static" en Java).
@@ -44,9 +48,9 @@ abstract class BilleteraDatabase : RoomDatabase() {
                     BilleteraDatabase::class.java,    // Qué clase de base de datos construir.
                     "billetera.db"                    // Nombre del archivo SQLite en el teléfono.
                 )
-                    // Si la versión instalada es más vieja (1) que la del código (2), Room BORRA
-                    // y recrea las tablas en lugar de "migrarlas". Lo aceptamos porque la versión 1
-                    // solo tenía movimientos de PRUEBA. En una app real se escribiría una Migration.
+                    // Si la versión instalada es más vieja que la del código, Room BORRA y recrea las
+                    // tablas en lugar de "migrarlas". Lo aceptamos porque el historial real está en el
+                    // SERVIDOR y se vuelve a descargar al iniciar sesión. En una app real se escribiría una Migration.
                     .fallbackToDestructiveMigration(dropAllTables = true)
                     .build()
                     // "also" = haz algo más con el resultado: guardarlo en "instancia".

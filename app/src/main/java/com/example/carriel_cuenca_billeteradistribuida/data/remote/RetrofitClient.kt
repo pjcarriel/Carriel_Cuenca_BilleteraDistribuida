@@ -11,27 +11,31 @@ import java.util.concurrent.TimeUnit                  // Unidades de tiempo (seg
 // Crea UNA sola vez el cliente HTTP y la API (object = instancia única para toda la app).
 object RetrofitClient {
 
-    // Interceptor de LOG: muestra en el Logcat (tag "HTTP") cada petición y respuesta,
-    // incluyendo el NOMBRE DEL HILO en el que OkHttp hace la llamada de red.
-    // Level.BODY = muestra método, URL, código HTTP y el JSON completo.
+    // Interceptor de LOG: muestra en el Logcat (tag "HTTP") cada petición y respuesta con el NOMBRE DEL HILO.
+    // redactHeader: el token NUNCA se escribe en el Logcat (aparece como "██").
     private val interceptorLog = HttpLoggingInterceptor { mensaje ->
         Log.d("HTTP", "[${Thread.currentThread().name}] $mensaje")
-    }.apply { level = HttpLoggingInterceptor.Level.BODY }
+    }.apply {
+        level = HttpLoggingInterceptor.Level.BODY
+        redactHeader("Authorization")
+    }
 
-    // Cliente OkHttp compartido. "val" público porque la Fase 5 lo reutilizará para el WebSocket.
+    // Cliente OkHttp compartido (lo reutiliza el WebSocket).
+    // Orden de los interceptores: primero se añade el token, luego se registra la petición.
     val clienteHttp: OkHttpClient = OkHttpClient.Builder()
-        .addInterceptor(interceptorLog)             // Agregamos el log.
+        .addInterceptor(AuthInterceptor())          // 1. Añade "Authorization: Bearer <token>".
+        .addInterceptor(interceptorLog)             // 2. Registra la petición (con el token oculto).
         .connectTimeout(5, TimeUnit.SECONDS)        // Si en 5 s no conecta (servidor apagado) -> error.
         .readTimeout(10, TimeUnit.SECONDS)          // Si en 10 s no responde -> error.
         .build()
 
-    // La API de Retrofit. "by lazy" = se construye la PRIMERA vez que alguien la usa (no antes).
+    // La API de Retrofit. "by lazy" = se construye la primera vez que se usa.
     val api: BilleteraApi by lazy {
         Retrofit.Builder()
             .baseUrl(ConfigServidor.URL_BASE)                   // http://10.0.2.2:8090/
-            .client(clienteHttp)                                // Usamos nuestro OkHttp con logs.
-            .addConverterFactory(GsonConverterFactory.create()) // JSON con Gson.
+            .client(clienteHttp)
+            .addConverterFactory(GsonConverterFactory.create())
             .build()
-            .create(BilleteraApi::class.java)                   // Retrofit implementa la interfaz.
+            .create(BilleteraApi::class.java)
     }
 }

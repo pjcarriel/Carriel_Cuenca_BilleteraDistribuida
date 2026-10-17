@@ -1,0 +1,56 @@
+EVIDENCIA FASE 6.5b - App con login, registro, sesión, inactividad, historial por usuario y facturas
+Fecha: 17/10/2026 - Emulador Android 17 (API 37) - Servidor http://10.0.2.2:8090
+
+1. LOGIN CON CONTRASEÑA INCORRECTA Y CORRECTA
+[DefaultDispatcher-worker-1] SesionRepository: POST /auth/login (pamela)
+[OkHttp http://10.0.2.2:8090/...] <-- 401 Unauthorized http://10.0.2.2:8090/auth/login (516ms)
+   Pantalla: "Usuario o contraseña incorrectos"
+[DefaultDispatcher-worker-1] SesionRepository: POST /auth/login (pamela)
+[OkHttp http://10.0.2.2:8090/...] <-- 200 OK http://10.0.2.2:8090/auth/login (146ms)
+[main] SesionViewModel: sesión ACTIVA de pamela (cuenta 1001)
+[OkHttp http://10.0.2.2:8090/...] Authorization: ██            <- el token NO aparece en el Logcat
+[OkHttp http://10.0.2.2:8090/...] <-- 200 OK http://10.0.2.2:8090/mi-cuenta (30ms)
+[OkHttp http://10.0.2.2:8090/...] WebSocket: túnel ABIERTO con ws://10.0.2.2:8090/ws
+[OkHttp http://10.0.2.2:8090/...] <-- 200 OK http://10.0.2.2:8090/movimientos (41ms)
+[DefaultDispatcher-worker-11] Repository: historial sincronizado (15 en el servidor, 15 nuevos)
+
+2. REGISTRO DESDE LA APP (Carla Mena / carla / carla2026)
+[DefaultDispatcher-worker-2] SesionRepository: POST /auth/registro (carla)
+[OkHttp http://10.0.2.2:8090/...] <-- 201 Created http://10.0.2.2:8090/auth/registro (517ms)
+[main] SesionViewModel: sesión ACTIVA de carla (cuenta 1006)
+[DefaultDispatcher-worker-11] Repository: historial sincronizado (1 en el servidor, 1 nuevos)
+   Pantalla: saldo $100.00, historial "Depósito - Bono de bienvenida",
+   mensaje "¡Bienvenido/a, Carla! Tu cuenta 1006 recibió $ 100.00 de regalo"
+
+3. TRANSFERENCIA ENTRE DOS USUARIOS EN TIEMPO REAL (pamela 1001 -> carla 1006, $30, enviada desde la PC)
+Servidor: "Transferencia enviada a Carla Mena (1006)"
+[OkHttp ...] WebSocket: mensaje recibido {"tipo":"TRANSFERENCIA_RECIBIDA","cuenta":"1006","saldo":130.0,
+             "cuentaOrigen":"1001","monto":30.0,"transaccionId":20,"detalle":"De Pamela Carriel (1001)"}
+[DefaultDispatcher-worker-11] Repository: guardando transferencia recibida en Room (saldo nuevo 130.0)
+[main] ViewModel: transferencia recibida en tiempo real
+   Pantalla de Carla: $100.00 -> $130.00 sin tocar nada; "Recibiste $ 30.00 (De Pamela Carriel (1001))"
+
+4. FACTURA REAL (carla paga LUZ 445567)
+   Consulta -> "LUZ · Contrato 445567 · Titular: Pamela Carriel · Total a pagar: $ 28.10"; botón "Pagar $ 28.10"
+   Pago -> saldo $101.90; historial "Pago de servicio · Servicio Básico · LUZ - Contrato 445567" (ícono de rayo)
+   Segunda consulta -> "Factura ya PAGADA" (no se puede pagar dos veces)
+
+5. CIERRE POR INACTIVIDAD (5 minutos sin tocar la pantalla)
+   18:15:18 inicio sin actividad
+   18:19:59 aviso "¿Sigues ahí? Por seguridad, tu sesión se cerrará en 3 segundos por inactividad."
+[main] SesionViewModel: sesión cerrada por INACTIVIDAD
+[OkHttp ...] --> POST http://10.0.2.2:8090/auth/logout
+[OkHttp ...] <-- 204 No Content http://10.0.2.2:8090/auth/logout (46ms)
+[OkHttp ...] WebSocket: túnel CERRADO (código 1000)
+[DefaultDispatcher-worker-3] SesionRepository: sesión local cerrada
+   Pantalla: login con el aviso (azul) "Tu sesión se cerró por inactividad (5 min sin uso)"
+
+6. SESIÓN RECORDADA
+   Login de pamela -> app cerrada por completo (force-stop) -> reabierta:
+[main] SesionViewModel: sesión ACTIVA de pamela (cuenta 1001)     <- sin volver a escribir la contraseña
+   El historial incluye "Transferencia enviada A la cuenta 1006 -$30.00", hecha DESDE OTRO DISPOSITIVO (la PC):
+   la app la descargó del servidor al sincronizar (GET /movimientos).
+
+CORRECCIÓN DURANTE LAS PRUEBAS
+   "Cerraste sesión correctamente" se mostraba en rojo (como error). Se agregó AvisoAcceso(texto, esError):
+   los avisos informativos ahora se muestran en azul y los errores en rojo.

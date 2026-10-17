@@ -1,68 +1,81 @@
 // DTO = Data Transfer Object: clases que representan EXACTAMENTE el JSON que viaja por la red.
-// Gson convierte JSON <-> estas data class usando los NOMBRES de las propiedades,
-// por eso deben llamarse igual que los campos del JSON del servidor.
+// Gson convierte JSON <-> estas data class usando los NOMBRES de las propiedades.
 package com.example.carriel_cuenca_billeteradistribuida.data.remote.dto
 
-// ---------- Lo que ENVIAMOS al servidor ----------
+// =========================== AUTENTICACIÓN ===========================
 
-// Cuerpo de POST /depositar y POST /retirar.  JSON: {"cuenta":"1001","monto":50.0}
-data class OperacionSimpleRequest(
-    val cuenta: String,
-    val monto: Double
+// POST /auth/login   {"usuario":"pamela","password":"demo123"}
+data class LoginRequest(val usuario: String, val password: String)
+
+// POST /auth/registro   {"usuario":"maria","nombre":"María López","password":"maria2026"}
+data class RegistroRequest(val usuario: String, val nombre: String, val password: String)
+
+// Respuesta de login y registro.
+data class SesionDto(
+    val token: String,              // Se envía en cada petición (lo pone AuthInterceptor).
+    val usuario: String,
+    val nombre: String,
+    val cuenta: String,             // Número de cuenta del usuario.
+    val saldo: Double,
+    val minutosInactividad: Int     // Minutos sin actividad tras los que la sesión se cierra.
 )
 
-// Cuerpo de POST /transferir.  JSON: {"cuentaOrigen":"1001","cuentaDestino":"1002","monto":25.0}
-data class TransferenciaRequest(
-    val cuentaOrigen: String,
-    val cuentaDestino: String,
-    val monto: Double
-)
+// =========================== OPERACIONES ===========================
+// La cuenta de ORIGEN no viaja en el JSON: el servidor la toma del token.
 
-// Cuerpo de POST /pagar-servicio.  JSON: {"cuenta":"1001","servicio":"LUZ","contrato":"445566","monto":32.75}
-data class PagoServicioRequest(
-    val cuenta: String,
+// POST /depositar  y  POST /retirar   {"monto": 50.0}
+data class MontoRequest(val monto: Double)
+
+// POST /transferir   {"cuentaDestino":"1002","monto":25.0}
+data class TransferenciaRequest(val cuentaDestino: String, val monto: Double)
+
+// POST /pagar-servicio   {"servicio":"LUZ","contrato":"445566"}   (el monto lo pone la factura)
+data class PagoServicioRequest(val servicio: String, val contrato: String)
+
+// GET /mi-cuenta
+data class CuentaDto(val numero: String, val titular: String, val saldo: Double)
+
+// GET /contratos/{codigo}?servicio=LUZ
+data class ContratoDto(
+    val codigo: String,
     val servicio: String,
-    val contrato: String,
-    val monto: Double
+    val titular: String,
+    val monto: Double,
+    val pagado: Boolean
 )
 
-// ---------- Lo que RECIBIMOS del servidor ----------
-
-// Respuesta de GET /cuentas/{numero}.
-data class CuentaDto(
-    val numero: String,
-    val titular: String,
-    val saldo: Double
+// GET /movimientos: un comprobante del historial del servidor.
+data class MovimientoDto(
+    val transaccionId: Long,
+    val tipo: String,               // Mismos nombres que el enum TipoOperacion.
+    val monto: Double,
+    val fecha: Long,
+    val detalle: String,
+    val categoria: String?
 )
 
 // Respuesta de las 4 operaciones cuando salen BIEN (HTTP 200).
 data class OperacionRespuestaDto(
-    val transaccionId: Long,    // Id del comprobante en MySQL.
+    val transaccionId: Long,
     val tipo: String,
     val cuenta: String,
     val monto: Double,
-    val saldo: Double,          // SALDO NUEVO después de la operación.
-    val fecha: Long,            // Fecha del servidor en milisegundos.
-    val mensaje: String         // Texto para mostrar al usuario.
+    val saldo: Double,              // SALDO NUEVO después de la operación.
+    val fecha: Long,
+    val mensaje: String
 )
 
-// Mensaje que llega por el WEBSOCKET (no por REST).
-// tipo = "CONECTADO" -> al abrir el túnel, con el saldo actual.
-// tipo = "TRANSFERENCIA_RECIBIDA" -> otra cuenta nos envió dinero.
-// Los campos con "?" no vienen en todos los mensajes (CONECTADO no trae cuentaOrigen ni monto).
+// Mensaje que llega por el WEBSOCKET.
 data class EventoWebSocketDto(
-    val tipo: String,
+    val tipo: String,               // "CONECTADO" o "TRANSFERENCIA_RECIBIDA".
     val cuenta: String,
-    val saldo: Double,              // Saldo actualizado de NUESTRA cuenta.
-    val cuentaOrigen: String?,      // Quién envió el dinero.
-    val monto: Double?,             // Cuánto envió.
+    val saldo: Double,
+    val cuentaOrigen: String?,
+    val monto: Double?,
     val transaccionId: Long?,
+    val detalle: String?,           // Ej. "De María López (1004)".
     val fecha: Long
 )
 
-// Cuerpo de las respuestas de ERROR (400, 404, 409).
-// JSON: {"codigo":"SALDO_INSUFICIENTE","mensaje":"Saldo insuficiente: ..."}
-data class ErrorRespuestaDto(
-    val codigo: String?,        // "?" porque si el servidor falla raro podría no venir.
-    val mensaje: String?
-)
+// Cuerpo de las respuestas de ERROR (400, 401, 404, 409).
+data class ErrorRespuestaDto(val codigo: String?, val mensaje: String?)

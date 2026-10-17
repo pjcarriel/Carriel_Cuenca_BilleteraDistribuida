@@ -1,67 +1,68 @@
 // Paquete de la interfaz gráfica.
 package com.example.carriel_cuenca_billeteradistribuida.ui
 
-import androidx.activity.compose.rememberLauncherForActivityResult     // Abre diálogos del sistema y recibe la respuesta.
-import androidx.activity.result.contract.ActivityResultContracts       // Contrato "pedir un permiso".
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize                 // Ocupar toda la pantalla.
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding                     // Margen interno.
-import androidx.compose.material3.LinearProgressIndicator             // Barra de progreso animada.
-import androidx.compose.material3.Scaffold                            // Estructura base de la pantalla.
-import androidx.compose.material3.Snackbar                            // El mensaje temporal en sí.
-import androidx.compose.material3.SnackbarHost                        // Lugar donde aparecen los Snackbars.
-import androidx.compose.material3.SnackbarHostState                   // Controla qué Snackbar se muestra.
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect                        // Lanza una corrutina desde Compose.
-import androidx.compose.runtime.getValue                              // Permite usar "by".
+import androidx.compose.runtime.DisposableEffect                   // Efecto con "limpieza" al salir de pantalla.
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember                              // Recuerda un valor entre redibujados.
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext                      // Contexto de Android dentro de Compose.
-import androidx.lifecycle.compose.collectAsStateWithLifecycle         // StateFlow -> estado de Compose.
-import androidx.lifecycle.viewmodel.compose.viewModel                 // Obtiene (o crea) el ViewModel.
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.carriel_cuenca_billeteradistribuida.data.local.SesionEntity
 import com.example.carriel_cuenca_billeteradistribuida.model.EstadoOperacion
 import com.example.carriel_cuenca_billeteradistribuida.model.TipoOperacion
 import com.example.carriel_cuenca_billeteradistribuida.ui.components.OperacionDialog
 import com.example.carriel_cuenca_billeteradistribuida.ui.theme.RojoEgreso
 import com.example.carriel_cuenca_billeteradistribuida.ui.theme.VerdeIngreso
-import com.example.carriel_cuenca_billeteradistribuida.util.PERMISO_RED_LOCAL
-import com.example.carriel_cuenca_billeteradistribuida.util.necesitaPermisoRedLocal
 
-// Pantalla "raíz" de la app: une el ViewModel con la UI.
+// BILLETERA del usuario con sesión activa: une su ViewModel con la pantalla.
 @Composable
-fun BilleteraApp(viewModel: BilleteraViewModel = viewModel(factory = BilleteraViewModel.Factory)) {
-
-    // Leemos cada StateFlow del ViewModel como estado de Compose.
+fun BilleteraApp(
+    sesion: SesionEntity,                       // Quién inició sesión (usuario, nombre, cuenta).
+    saludo: String?,                            // Mensaje de bienvenida (o null).
+    onSaludoMostrado: () -> Unit,
+    onCerrarSesion: () -> Unit,
+    onActividad: () -> Unit,                    // Reinicia el contador de inactividad.
+    onSesionInvalida: (String) -> Unit,         // El servidor rechazó la sesión (401).
+    // Un ViewModel POR CUENTA ("key"): si entra otro usuario, tiene su propio estado y repositorio.
+    viewModel: BilleteraViewModel = viewModel(
+        key = "billetera-${sesion.cuenta}",
+        factory = BilleteraViewModel.factory(sesion.cuenta, onSesionInvalida)
+    )
+) {
     val saldo by viewModel.saldo.collectAsStateWithLifecycle()
     val estadoConexion by viewModel.estadoConexion.collectAsStateWithLifecycle()
     val historial by viewModel.historial.collectAsStateWithLifecycle()
     val estado by viewModel.estado.collectAsStateWithLifecycle()
 
-    // Qué diálogo está abierto: null = ninguno. Es estado SOLO de la pantalla (no del ViewModel).
     var dialogoAbierto by remember { mutableStateOf<TipoOperacion?>(null) }
-
-    // Estado del Snackbar y si el mensaje actual es un error (para pintarlo de rojo o de verde).
     val snackbarHostState = remember { SnackbarHostState() }
     var mensajeEsError by remember { mutableStateOf(false) }
 
-    // ---------- PERMISO DE RED LOCAL (Android 17) ----------
-    val contexto = LocalContext.current
-    // Lanzador del diálogo del SISTEMA que pide un permiso. La lambda recibe la respuesta del usuario.
-    val pedirPermiso = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { concedido ->
-        if (concedido) viewModel.iniciarConexion()       // Ya podemos hablar con el servidor (REST + WebSocket).
-        else viewModel.permisoRedLocalDenegado()        // Sin permiso: solo datos locales.
-    }
-    // LaunchedEffect(Unit): se ejecuta una vez al mostrar la pantalla (y al recrearla, ej. al rotar).
+    // Al entrar: sincronizar con el servidor, abrir el WebSocket y mostrar el saludo (una sola vez).
     LaunchedEffect(Unit) {
-        if (necesitaPermisoRedLocal(contexto)) pedirPermiso.launch(PERMISO_RED_LOCAL)
-        else viewModel.iniciarConexion()
+        viewModel.iniciarConexion()
+        saludo?.let { viewModel.mostrarMensaje(it); onSaludoMostrado() }
+    }
+    // Al SALIR de esta pantalla (cerrar sesión, cambiar de usuario): cerrar el WebSocket.
+    DisposableEffect(Unit) {
+        onDispose { viewModel.detenerTiempoReal() }
     }
 
-    // Cada vez que "estado" cambia, mostramos el mensaje correspondiente.
+    // Mensajes de resultado (verde = éxito, rojo = error).
     LaunchedEffect(estado) {
         when (val e = estado) {
             is EstadoOperacion.Exito -> {
@@ -71,7 +72,7 @@ fun BilleteraApp(viewModel: BilleteraViewModel = viewModel(factory = BilleteraVi
             }
             is EstadoOperacion.Error -> {
                 mensajeEsError = true
-                snackbarHostState.showSnackbar("✖ ${e.mensaje}")   // Ej.: "✖ Saldo insuficiente: ..."
+                snackbarHostState.showSnackbar("✖ ${e.mensaje}")
                 viewModel.mensajeMostrado()
             }
             EstadoOperacion.Inactivo, EstadoOperacion.Procesando -> Unit
@@ -80,7 +81,6 @@ fun BilleteraApp(viewModel: BilleteraViewModel = viewModel(factory = BilleteraVi
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
-        // Snackbar personalizado: VERDE oscuro si salió bien, ROJO si falló.
         snackbarHost = {
             SnackbarHost(snackbarHostState) { datos ->
                 Snackbar(
@@ -93,30 +93,34 @@ fun BilleteraApp(viewModel: BilleteraViewModel = viewModel(factory = BilleteraVi
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding)) {
             val procesando = estado is EstadoOperacion.Procesando
-            // Mientras una operación está en curso, mostramos una barra de progreso arriba.
             if (procesando) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             DashboardScreen(
+                nombre = sesion.nombre,
+                usuario = sesion.usuario,
+                cuenta = sesion.cuenta,
                 saldo = saldo,
                 estadoConexion = estadoConexion,
                 movimientos = historial,
                 procesando = procesando,
-                // Al tocar un botón, solo ABRIMOS el diálogo de ese tipo.
                 onAccionClick = { tipo -> dialogoAbierto = tipo },
+                onCerrarSesion = onCerrarSesion,
                 modifier = Modifier.fillMaxSize()
             )
         }
     }
 
-    // Si hay un diálogo abierto, lo dibujamos encima de todo.
-    // "?.let { tipo -> }" = solo si dialogoAbierto no es null.
     dialogoAbierto?.let { tipo ->
         OperacionDialog(
             tipo = tipo,
             saldo = saldo,
             estadoConexion = estadoConexion,
+            cuentaPropia = sesion.cuenta,
+            // Referencia a la función suspend del ViewModel: el diálogo la llama y espera la factura.
+            onConsultarFactura = viewModel::consultarFactura,
+            onActividad = onActividad,
             onConfirmar = { solicitud ->
-                dialogoAbierto = null                       // Cerramos el diálogo...
-                viewModel.ejecutarOperacion(solicitud)      // ...y enviamos la operación al servidor.
+                dialogoAbierto = null
+                viewModel.ejecutarOperacion(solicitud)
             },
             onCancelar = { dialogoAbierto = null }
         )

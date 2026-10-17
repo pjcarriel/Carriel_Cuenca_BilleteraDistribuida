@@ -8,75 +8,73 @@ import kotlinx.coroutines.flow.callbackFlow            // Convierte "callbacks" 
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
-import okhttp3.WebSocket                               // La conexión WebSocket abierta.
-import okhttp3.WebSocketListener                       // "Oyente": OkHttp llama a sus funciones cuando pasa algo.
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
 import java.util.concurrent.TimeUnit
 
+// Código con el que el servidor cierra el túnel si el token no es válido o expiró (1008 = POLICY VIOLATION).
+private const val CODIGO_SESION_RECHAZADA = 1008
+
 // Lo que puede pasar en el túnel, ya traducido para el Repository.
-// "sealed interface": familia cerrada de eventos.
 sealed interface EventoSocket {
-    data object Abierto : EventoSocket                       // El túnel se abrió.
-    data class Mensaje(val texto: String) : EventoSocket     // Llegó un mensaje (texto JSON).
+    data object Abierto : EventoSocket
+    data class Mensaje(val texto: String) : EventoSocket
 }
 
-// Cliente WebSocket basado en OkHttp.
-// OkHttp avisa de los eventos con CALLBACKS (funciones que él llama en SU propio hilo).
-// Con "callbackFlow" los convertimos en un Flow, que el Repository recolecta con corrutinas.
+// El servidor rechazó el túnel por la sesión: NO hay que reintentar, hay que volver al login.
+class SesionRechazadaException(motivo: String) : Exception(motivo)
+
+// Cliente WebSocket basado en OkHttp: convierte sus callbacks en un Flow con callbackFlow.
 class WebSocketCliente(clienteBase: OkHttpClient) {
 
-    // Cliente propio para el WebSocket, derivado del de Retrofit:
-    // - sin el interceptor de logs HTTP (el túnel no es una petición normal),
-    // - readTimeout(0): sin límite de espera, porque el túnel pasa mucho tiempo en silencio,
-    // - pingInterval(15 s): OkHttp envía un "ping" cada 15 s; si no hay respuesta,
-    //   da la conexión por perdida (así detectamos un servidor caído).
+    // Cliente propio para el túnel: sin interceptores (el token se pone a mano abajo),
+    // sin límite de lectura (el túnel pasa mucho tiempo en silencio) y con ping cada 15 s.
     private val cliente: OkHttpClient = clienteBase.newBuilder()
         .apply { interceptors().clear() }
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .pingInterval(15, TimeUnit.SECONDS)
         .build()
 
-    // Abre el WebSocket y devuelve un Flow con sus eventos.
-    // - El Flow TERMINA normalmente si el servidor cierra el túnel.
-    // - El Flow FALLA (lanza la excepción) si la conexión se cae o no se puede abrir.
-    // - Si quien lo recolecta se cancela, awaitClose cierra el WebSocket.
-    fun escuchar(url: String): Flow<EventoSocket> = callbackFlow {
-        val oyente = object : WebSocketListener() {      // "object :" = clase anónima que hereda del oyente.
-
-            // Se llama cuando el servidor acepta la conexión.
+    // Abre el túnel con el token en la cabecera y devuelve un Flow con sus eventos.
+    // - Termina normal si el servidor cierra; termina con error si la conexión falla;
+    // - termina con SesionRechazadaException si el servidor rechaza la sesión (código 1008).
+    fun escuchar(url: String, token: String): Flow<EventoSocket> = callbackFlow {
+        val oyente = object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 logHilo("WebSocket: túnel ABIERTO con $url")
-                trySend(EventoSocket.Abierto)            // trySend: envía al Flow sin suspender.
+                trySend(EventoSocket.Abierto)
             }
 
-            // Se llama cada vez que el servidor envía un mensaje de texto.
             override fun onMessage(webSocket: WebSocket, text: String) {
                 logHilo("WebSocket: mensaje recibido $text")
                 trySend(EventoSocket.Mensaje(text))
             }
 
-            // El servidor pidió cerrar: respondemos cerrando también.
+            // El servidor pidió cerrar. Si fue por la sesión (1008), avisamos con una excepción especial.
             override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
                 webSocket.close(1000, null)
+                if (code == CODIGO_SESION_RECHAZADA) {
+                    logHilo("WebSocket: sesión RECHAZADA por el servidor ($reason)")
+                    close(SesionRechazadaException(reason))
+                }
             }
 
-            // El túnel se cerró de forma ordenada: terminamos el Flow.
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 logHilo("WebSocket: túnel CERRADO (código $code)")
-                close()
+                close()                                  // Si ya estaba cerrado, no hace nada.
             }
 
-            // Falló la conexión (servidor apagado, red caída, ping sin respuesta...).
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 logHilo("WebSocket: FALLO ${t.javaClass.simpleName}: ${t.message}")
-                close(t)                                 // El Flow termina CON error.
+                close(t)
             }
         }
 
-        // Pedimos a OkHttp que abra el túnel. OkHttp trabaja en sus propios hilos y llama al oyente.
-        val socket = cliente.newWebSocket(Request.Builder().url(url).build(), oyente)
+        // La cabecera Authorization identifica al usuario (igual que en REST).
+        val peticion = Request.Builder().url(url).header("Authorization", "Bearer $token").build()
+        val socket = cliente.newWebSocket(peticion, oyente)
 
-        // Esperamos aquí (suspendidos) hasta que el Flow se cierre o se cancele;
-        // entonces cerramos el WebSocket (código 1000 = cierre normal).
+        // Al cancelar quien escucha (cerrar sesión, salir de la app), cerramos el túnel.
         awaitClose { socket.close(1000, "Cliente detenido") }
     }
 }
