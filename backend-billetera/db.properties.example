@@ -1,0 +1,10 @@
+# PLANTILLA de conexión a MySQL.
+# 1. Copia este archivo y renombra la copia a: db.properties
+# 2. Cambia el puerto, el usuario y la contraseña por los de TU MySQL.
+# 3. db.properties está en .gitignore: tu contraseña nunca se sube a GitHub.
+#
+# createDatabaseIfNotExist=true -> el servidor crea la base "billetera" si no existe.
+# allowPublicKeyRetrieval=true y useSSL=false -> necesarios para conectarse a un MySQL 8 local sin SSL.
+db.url=jdbc:mysql://localhost:3306/billetera?createDatabaseIfNotExist=true&allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC
+db.user=root
+db.password=TU_CONTRASEÑA_AQUI

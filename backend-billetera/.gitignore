@@ -1,0 +1,9 @@
+# Credenciales de MySQL de CADA integrante: NUNCA se suben a GitHub.
+db.properties
+# Archivos generados al compilar.
+build/
+.gradle/
+.kotlin/
+# Archivos del IDE (IntelliJ).
+.idea/
+*.iml

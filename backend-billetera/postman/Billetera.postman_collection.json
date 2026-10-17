@@ -1,0 +1,87 @@
+{
+  "info": {
+    "name": "Billetera Distribuida",
+    "description": "Pruebas del servidor Ktor + MySQL. Cuenta de la app: 1001. Otros usuarios: 1002 y 1003.\nWebSocket (crear aparte en Postman: New > WebSocket): ws://localhost:8080/ws/1001",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" }
+  ],
+  "item": [
+    {
+      "name": "0. Servidor vivo",
+      "request": { "method": "GET", "url": "{{baseUrl}}/" }
+    },
+    {
+      "name": "1. Consultar cuenta 1001",
+      "request": { "method": "GET", "url": "{{baseUrl}}/cuentas/1001" }
+    },
+    {
+      "name": "2. Depositar 50 en 1001",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"cuenta\": \"1001\",\n  \"monto\": 50.0\n}" },
+        "url": "{{baseUrl}}/depositar"
+      }
+    },
+    {
+      "name": "3. Retirar 20 de 1001",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"cuenta\": \"1001\",\n  \"monto\": 20.0\n}" },
+        "url": "{{baseUrl}}/retirar"
+      }
+    },
+    {
+      "name": "4. Retirar SIN FONDOS (espera 409)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"cuenta\": \"1001\",\n  \"monto\": 999999.0\n}" },
+        "url": "{{baseUrl}}/retirar"
+      }
+    },
+    {
+      "name": "5. DEMO: 1002 transfiere 25 a 1001 (la app lo recibe en tiempo real)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"cuentaOrigen\": \"1002\",\n  \"cuentaDestino\": \"1001\",\n  \"monto\": 25.0\n}" },
+        "url": "{{baseUrl}}/transferir"
+      }
+    },
+    {
+      "name": "6. 1001 transfiere 10 a 1003",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"cuentaOrigen\": \"1001\",\n  \"cuentaDestino\": \"1003\",\n  \"monto\": 10.0\n}" },
+        "url": "{{baseUrl}}/transferir"
+      }
+    },
+    {
+      "name": "7. Pagar servicio LUZ desde 1001",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"cuenta\": \"1001\",\n  \"servicio\": \"LUZ\",\n  \"contrato\": \"445566\",\n  \"monto\": 32.75\n}" },
+        "url": "{{baseUrl}}/pagar-servicio"
+      }
+    },
+    {
+      "name": "8. Cuenta inexistente (espera 404)",
+      "request": { "method": "GET", "url": "{{baseUrl}}/cuentas/9999" }
+    },
+    {
+      "name": "9. Monto negativo (espera 400)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"cuenta\": \"1001\",\n  \"monto\": -5\n}" },
+        "url": "{{baseUrl}}/depositar"
+      }
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+<!-- Configuración de los logs del servidor. -->
+<configuration>
+    <!-- Escribe los logs en la consola. -->
+    <appender name="CONSOLA" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <!-- Formato: hora [HILO] nivel - mensaje.  %thread muestra en qué hilo corre cada cosa. -->
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level - %msg%n</pattern>
+        </encoder>
+    </appender>
+    <!-- Netty y Hikari escriben demasiado: solo mostramos sus advertencias. -->
+    <logger name="io.netty" level="WARN"/>
+    <logger name="com.zaxxer.hikari" level="WARN"/>
+    <!-- Nivel general: INFO (mensajes informativos y errores). -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLA"/>
+    </root>
+</configuration>

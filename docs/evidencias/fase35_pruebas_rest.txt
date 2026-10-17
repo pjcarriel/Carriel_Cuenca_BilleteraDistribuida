@@ -1,0 +1,35 @@
+EVIDENCIA FASE 3.5 - Pruebas del servidor Ktor + MySQL (equivalentes a la colección de Postman)
+Fecha: 17/10/2026. Servidor: http://localhost:8080. Cuentas iniciales: 1001=$1250.75, 1002=$500, 1003=$300.
+
+PETICIÓN                                                              HTTP  RESULTADO
+GET  /                                                                 200   "Servidor Billetera Distribuida: OK"
+GET  /cuentas/1001                                                     200   saldo 1250.75
+POST /depositar        {"cuenta":"1001","monto":50}                    200   saldo 1300.75 (transaccionId 1)
+POST /retirar          {"cuenta":"1001","monto":20}                    200   saldo 1280.75 (transaccionId 2)
+POST /retirar          {"cuenta":"1001","monto":999999}                409   SALDO_INSUFICIENTE
+POST /transferir       {"cuentaOrigen":"1002","cuentaDestino":"1001","monto":25}
+                                                                       200   emisor 1002 queda en 475.00; receptor notificado por WebSocket
+POST /pagar-servicio   {"cuenta":"1001","servicio":"luz","contrato":"445566","monto":32.75}
+                                                                       200   "Pago de LUZ - Contrato 445566 realizado", saldo 1273.00
+GET  /cuentas/9999                                                     404   CUENTA_NO_EXISTE
+POST /depositar        {"cuenta":"1001","monto":-5}                    400   MONTO_INVALIDO
+POST /transferir       {"cuentaOrigen":"1001","cuentaDestino":"1001"}  400   DATO_INVALIDO (misma cuenta)
+POST /depositar        {"cuenta":"1001"}  (falta monto)                400   JSON_INVALIDO
+
+WEBSOCKET ws://localhost:8080/ws/1001 (cliente de prueba = "celular" de la cuenta 1001)
+16:07:05.817 ABIERTO
+16:07:05.862 RECIBIDO {"tipo":"CONECTADO","cuenta":"1001","saldo":1250.75}
+16:07:07.649 RECIBIDO {"tipo":"TRANSFERENCIA_RECIBIDA","cuenta":"1001","saldo":1305.75,"cuentaOrigen":"1002","monto":25.0,"transaccionId":3}
+-> La transferencia se respondió por REST a las 16:07:07.643 y el receptor la recibió a las 16:07:07.649 (6 ms).
+
+PRUEBA DE CONCURRENCIA (condición de carrera)
+10 retiros SIMULTÁNEOS de $200 sobre la cuenta 1003 (saldo $300):
+      1 respuesta HTTP 200
+      9 respuestas HTTP 409 (SALDO_INSUFICIENTE)
+Saldo final 1003: $100.00  (nunca negativo). En MySQL hay UN solo retiro registrado.
+-> SELECT ... FOR UPDATE serializa el acceso a la fila: cada retiro espera su turno y ve el saldo ya actualizado.
+
+ESTADO FINAL EN MySQL
+cuentas:      1001 = 1273.00 | 1002 = 475.00 | 1003 = 100.00
+transacciones: 1 DEPOSITO 1001 50.00 | 2 RETIRO 1001 20.00 | 3 TRANSFERENCIA 1002->1001 25.00
+               4 PAGO_SERVICIO 1001 32.75 "LUZ - Contrato 445566" | 5 RETIRO 1003 200.00

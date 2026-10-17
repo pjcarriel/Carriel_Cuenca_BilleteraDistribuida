@@ -1,0 +1,45 @@
+EVIDENCIA FASE 3.5 - Log del servidor Ktor (formato: hora [HILO] nivel - mensaje)
+Fecha: 17/10/2026. MySQL 8.0.46 en puerto 3307.
+
+11:06:32.764 [main] INFO  - Conectado a MySQL: jdbc:mysql://localhost:3307/billetera
+11:06:32.974 [main] INFO  - Tablas listas (cuentas, transacciones)
+11:06:32.974 [main] INFO  - Servidor iniciando en http://localhost:8080  (emulador: http://10.0.2.2:8080)
+11:06:33.317 [main] INFO  - Application started in 0.299 seconds.
+11:06:33.592 [DefaultDispatcher-worker-1] INFO  - Responding at http://127.0.0.1:8080
+11:07:05.823 [eventLoopGroupProxy-3-5] INFO  - WebSocket CONECTADO: cuenta 1001 (conexiones de esa cuenta: 1)
+11:07:07.376 [DefaultDispatcher-worker-1] INFO  - Depósito de 50.00 en 1001
+11:07:07.468 [DefaultDispatcher-worker-1] INFO  - Retiro de 20.00 en 1001
+11:07:07.555 [DefaultDispatcher-worker-1] INFO  - Retiro de 999999.00 en 1001
+11:07:07.569 [eventLoopGroupProxy-4-6] WARN  - Error 409 SALDO_INSUFICIENTE: Saldo insuficiente: tienes 1280.75 y se requieren 999999.0
+11:07:07.638 [DefaultDispatcher-worker-1] INFO  - Transferencia de 25.00: 1002 -> 1001
+11:07:07.649 [eventLoopGroupProxy-4-7] INFO  - Notificación TRANSFERENCIA_RECIBIDA enviada a la cuenta 1001: {"tipo":"TRANSFERENCIA_RECIBIDA","cuenta":"1001","saldo":1305.75,"cuentaOrigen":"1002","monto":25.0,"transaccionId":3,"fecha":1792253227646}
+11:07:07.730 [DefaultDispatcher-worker-1] INFO  - Pago de LUZ (contrato 445566) por 32.75 desde 1001
+11:07:07.796 [eventLoopGroupProxy-4-9] WARN  - Error 404 CUENTA_NO_EXISTE: La cuenta 9999 no existe
+11:07:07.839 [eventLoopGroupProxy-4-10] WARN  - Error 400 MONTO_INVALIDO: El monto debe ser mayor que 0
+11:07:07.883 [eventLoopGroupProxy-4-11] WARN  - Error 400 DATO_INVALIDO: No puedes transferirte a tu misma cuenta
+11:07:20.416 [DefaultDispatcher-worker-1] INFO  - Retiro de 200.00 en 1003
+11:07:20.428 [DefaultDispatcher-worker-1] INFO  - Retiro de 200.00 en 1003
+11:07:20.431 [eventLoopGroupProxy-4-15] WARN  - Error 409 SALDO_INSUFICIENTE: Saldo insuficiente: tienes 100.0 y se requieren 200.0
+11:07:20.436 [DefaultDispatcher-worker-1] INFO  - Retiro de 200.00 en 1003
+11:07:20.438 [eventLoopGroupProxy-4-16] WARN  - Error 409 SALDO_INSUFICIENTE: Saldo insuficiente: tienes 100.0 y se requieren 200.0
+11:07:20.443 [DefaultDispatcher-worker-1] INFO  - Retiro de 200.00 en 1003
+11:07:20.445 [DefaultDispatcher-worker-2] INFO  - Retiro de 200.00 en 1003
+11:07:20.446 [eventLoopGroupProxy-4-17] WARN  - Error 409 SALDO_INSUFICIENTE: Saldo insuficiente: tienes 100.0 y se requieren 200.0
+11:07:20.447 [eventLoopGroupProxy-4-18] WARN  - Error 409 SALDO_INSUFICIENTE: Saldo insuficiente: tienes 100.0 y se requieren 200.0
+11:07:20.458 [DefaultDispatcher-worker-2] INFO  - Retiro de 200.00 en 1003
+11:07:20.460 [eventLoopGroupProxy-4-19] WARN  - Error 409 SALDO_INSUFICIENTE: Saldo insuficiente: tienes 100.0 y se requieren 200.0
+11:07:20.472 [DefaultDispatcher-worker-2] INFO  - Retiro de 200.00 en 1003
+11:07:20.474 [eventLoopGroupProxy-4-20] WARN  - Error 409 SALDO_INSUFICIENTE: Saldo insuficiente: tienes 100.0 y se requieren 200.0
+11:07:20.490 [DefaultDispatcher-worker-2] INFO  - Retiro de 200.00 en 1003
+11:07:20.491 [eventLoopGroupProxy-4-22] WARN  - Error 409 SALDO_INSUFICIENTE: Saldo insuficiente: tienes 100.0 y se requieren 200.0
+11:07:20.497 [DefaultDispatcher-worker-2] INFO  - Retiro de 200.00 en 1003
+11:07:20.498 [DefaultDispatcher-worker-4] INFO  - Retiro de 200.00 en 1003
+11:07:20.499 [eventLoopGroupProxy-4-23] WARN  - Error 409 SALDO_INSUFICIENTE: Saldo insuficiente: tienes 100.0 y se requieren 200.0
+11:07:20.503 [eventLoopGroupProxy-4-21] WARN  - Error 409 SALDO_INSUFICIENTE: Saldo insuficiente: tienes 100.0 y se requieren 200.0
+11:07:20.721 [eventLoopGroupProxy-3-12] INFO  - WebSocket DESCONECTADO: cuenta 1001
+
+--- Cliente WebSocket de prueba (simula el celular de la cuenta 1001) ---
+16:07:05.817 ABIERTO ws://localhost:8080/ws/1001
+16:07:05.862 RECIBIDO {"tipo":"CONECTADO","cuenta":"1001","saldo":1250.75,"fecha":1792253225849}
+16:07:07.649 RECIBIDO {"tipo":"TRANSFERENCIA_RECIBIDA","cuenta":"1001","saldo":1305.75,"cuentaOrigen":"1002","monto":25.0,"transaccionId":3,"fecha":1792253227646}
+CERRADO 1000
