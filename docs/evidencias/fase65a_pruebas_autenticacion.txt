@@ -1,0 +1,55 @@
+EVIDENCIA FASE 6.5a - Servidor con usuarios, contraseñas cifradas, tokens, inactividad y contratos reales
+Fecha: 17/10/2026. Servidor http://localhost:8090 (Ktor CIO) + MySQL 8.0 (puerto 3307).
+
+MIGRACIÓN (sobre la base existente, sin perder datos)
+  Migración: columna cuentas.usuario_id agregada
+  Usuario de demostración creado: pamela -> cuenta 1001
+  Usuario de demostración creado: usuarioa -> cuenta 1002
+  Usuario de demostración creado: usuariob -> cuenta 1003
+  Tablas listas (usuarios, cuentas, transacciones, sesiones, contratos)
+
+PETICIÓN                                                          HTTP  RESULTADO
+GET  /mi-cuenta (sin token)                                        401   NO_AUTENTICADO
+POST /auth/login pamela / contraseña incorrecta                    401   CREDENCIALES_INVALIDAS (mensaje genérico)
+POST /auth/login pamela / demo123                                  200   token (64 hex), cuenta 1001, minutosInactividad 5
+GET  /mi-cuenta (con token)                                        200   {"numero":"1001","titular":"Pamela Carriel","saldo":1294.1}
+POST /auth/registro maria / "María López" / maria2026              201   cuenta 1004, saldo 100.0 (bono de bienvenida)
+POST /auth/registro maria (repetido)                               409   USUARIO_EXISTE
+POST /auth/registro "jo" / "123"                                   400   DATO_INVALIDO (usuario de 4 a 20 caracteres)
+POST /auth/registro "José Pérez Ñuñez" (JSON UTF-8)                201   cuenta 1005; nombre guardado correctamente (C3 A9 = é)
+GET  /movimientos (maria)                                          200   [TRANSFERENCIA_ENVIADA 25 "A la cuenta 1001", DEPOSITO 100 "Bono de bienvenida"]
+GET  /cuentas/1004                                                 200   {"numero":"1004","titular":"María López"} (sin saldo ajeno)
+GET  /contratos/445567?servicio=LUZ                                200   {"servicio":"LUZ","titular":"Pamela Carriel","monto":28.1,"pagado":false}
+GET  /contratos/445567?servicio=AGUA                               400   "El contrato 445567 es de LUZ, no de AGUA"
+GET  /contratos/999999                                             404   CONTRATO_NO_EXISTE
+POST /pagar-servicio {"servicio":"LUZ","contrato":"445566"}       200   monto 32.75 tomado de la FACTURA; saldo 1269.1
+POST /pagar-servicio (misma factura otra vez)                      409   FACTURA_PAGADA (no se cobra dos veces)
+POST /transferir maria -> 1001, 25                                 200   "Transferencia enviada a Pamela Carriel (1001)"
+
+WEBSOCKET
+  ws://localhost:8090/ws?token=<token de pamela>
+    ABIERTO
+    RECIBIDO {"tipo":"CONECTADO","cuenta":"1001","saldo":1269.1}
+    RECIBIDO {"tipo":"TRANSFERENCIA_RECIBIDA","cuenta":"1001","saldo":1294.1,"cuentaOrigen":"1004","monto":25.0,"transaccionId":17,"detalle":"De María López (1004)"}
+  ws://localhost:8090/ws (sin token)
+    CERRADO código 1008 NO_AUTENTICADO
+
+CIERRE POR INACTIVIDAD (5 minutos; se simuló el tiempo modificando ultima_actividad en MySQL)
+  maria con 6 min sin actividad -> GET /mi-cuenta -> 401 SESION_EXPIRADA (la sesión se borra)
+  maria de nuevo                -> GET /mi-cuenta -> 401 NO_AUTENTICADO
+  pamela con 4 min sin actividad -> GET /mi-cuenta -> 200 (y su contador vuelve a 0)
+
+LOGOUT
+  POST /auth/logout -> 204 ; luego GET /mi-cuenta con ese token -> 401 NO_AUTENTICADO
+
+CONTRASEÑAS EN MySQL (nunca en texto plano: hash PBKDF2-HMAC-SHA256 + sal aleatoria por usuario)
+  usuario  | numero | saldo   | hash_inicio              | sal
+  pamela   | 1001   | 1294.10 | Vfy1D9l1d4oMAifixiuRieaX | FT0px1i2jr3ywyybAFabzQ==
+  usuarioa | 1002   |  485.00 | Am1lCT4FKZobdzG1rqWp+hQP | 9F0E4E4FRWsC7grvXbu9TQ==
+  usuariob | 1003   |   90.00 | bguxSlDXstmIAFlOC/ykuewc | 9CWZ1qYQzYRXO7ukC8uTPA==
+  maria    | 1004   |   75.00 | enjlF99Qq7emD44sv76RkAvR | s4KoUHOQ8lbYDqxOo7AQcw==
+  -> pamela, usuarioa y usuariob tienen la MISMA contraseña (demo123) pero hashes DISTINTOS gracias a la sal.
+
+NOTA DE PRUEBA: los nombres con tildes enviados escribiendo el JSON directamente en la línea de comandos de
+Git Bash llegaron dañados (Windows convierte el texto antes de pasarlo a curl). Enviados desde un archivo
+UTF-8 (como hacen la app y Postman) se guardan correctamente.

@@ -6,10 +6,13 @@ import com.zaxxer.hikari.HikariDataSource     // Pool de conexiones a MySQL.
 import org.slf4j.LoggerFactory                // Para escribir logs.
 import java.io.File                           // Para leer el archivo db.properties.
 import java.sql.Connection                    // Una conexión a la base de datos.
+import java.sql.Statement
 import java.util.Properties                   // Lee archivos "clave=valor".
 
-// Logger de este archivo (los mensajes muestran la hora y el HILO, ver logback.xml).
 private val log = LoggerFactory.getLogger("BaseDeDatos")
+
+// Contraseña de los usuarios de DEMOSTRACIÓN (documentada en el README). Los usuarios reales eligen la suya.
+const val PASSWORD_DEMO = "demo123"
 
 // Acceso a MySQL. "object" = una sola instancia para todo el servidor.
 object BaseDeDatos {
@@ -19,15 +22,11 @@ object BaseDeDatos {
 
     // Lee db.properties, abre el pool de conexiones y prepara las tablas.
     fun iniciar() {
-        val archivo = File("db.properties")   // Se busca en la carpeta backend-billetera.
-        // Si el archivo no existe, detenemos el servidor con instrucciones claras.
+        val archivo = File("db.properties")
         if (!archivo.exists()) {
             error("No existe db.properties. Copia db.properties.example como db.properties y pon tus datos de MySQL.")
         }
-        // Leemos las claves db.url, db.user y db.password.
         val props = Properties().apply { archivo.inputStream().use { load(it) } }
-
-        // Configuramos el pool: mantiene varias conexiones abiertas y las presta a cada petición.
         val config = HikariConfig().apply {
             jdbcUrl = props.getProperty("db.url")
             username = props.getProperty("db.user")
@@ -36,27 +35,44 @@ object BaseDeDatos {
         }
         pool = HikariDataSource(config)
         log.info("Conectado a MySQL: ${config.jdbcUrl.substringBefore("?")}")
-
         crearTablas()
     }
 
-    // Crea las tablas si no existen y agrega cuentas de prueba (solo la primera vez).
+    // Crea las tablas que falten y agrega datos de demostración (solo la primera vez).
     private fun crearTablas() {
-        pool.connection.use { con ->        // "use" cierra la conexión al terminar, aunque haya error.
+        pool.connection.use { con ->
             con.createStatement().use { st ->
-                // Tabla de cuentas. DECIMAL(12,2) = número exacto con 2 decimales (ideal para dinero).
-                // CHECK (saldo >= 0): MySQL rechaza cualquier saldo negativo (segunda barrera de seguridad).
+                // USUARIOS: personas registradas. Guardamos el HASH de la contraseña y su SAL, nunca la contraseña.
+                st.executeUpdate(
+                    """
+                    CREATE TABLE IF NOT EXISTS usuarios (
+                        id            BIGINT AUTO_INCREMENT PRIMARY KEY,
+                        usuario       VARCHAR(20)  NOT NULL UNIQUE,
+                        nombre        VARCHAR(100) NOT NULL,
+                        password_hash VARCHAR(100) NOT NULL,
+                        sal           VARCHAR(50)  NOT NULL,
+                        creado        TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+                    )
+                    """.trimIndent()
+                )
+                // CUENTAS: saldo oficial. CHECK impide saldos negativos.
                 st.executeUpdate(
                     """
                     CREATE TABLE IF NOT EXISTS cuentas (
-                        numero  VARCHAR(20)   PRIMARY KEY,
-                        titular VARCHAR(100)  NOT NULL,
-                        saldo   DECIMAL(12,2) NOT NULL DEFAULT 0,
+                        numero     VARCHAR(20)   PRIMARY KEY,
+                        titular    VARCHAR(100)  NOT NULL,
+                        saldo      DECIMAL(12,2) NOT NULL DEFAULT 0,
+                        usuario_id BIGINT        NULL UNIQUE,
                         CHECK (saldo >= 0)
                     )
                     """.trimIndent()
                 )
-                // Tabla de transacciones: el historial OFICIAL del servidor.
+                // Bases creadas en la Fase 3.5 no tienen usuario_id: se agrega (MIGRACIÓN manual).
+                if (!existeColumna(con, "cuentas", "usuario_id")) {
+                    st.executeUpdate("ALTER TABLE cuentas ADD COLUMN usuario_id BIGINT NULL UNIQUE")
+                    log.info("Migración: columna cuentas.usuario_id agregada")
+                }
+                // TRANSACCIONES: historial oficial del servidor.
                 st.executeUpdate(
                     """
                     CREATE TABLE IF NOT EXISTS transacciones (
@@ -71,8 +87,33 @@ object BaseDeDatos {
                     )
                     """.trimIndent()
                 )
-                // Cuentas de prueba. INSERT IGNORE = si ya existen, no hace nada (no se duplican).
-                // 1001 = la cuenta de la app; 1002 y 1003 = otros usuarios (los usaremos desde Postman).
+                // SESIONES: tokens activos y su ÚLTIMA ACTIVIDAD (para cerrar por inactividad).
+                st.executeUpdate(
+                    """
+                    CREATE TABLE IF NOT EXISTS sesiones (
+                        token            CHAR(64)     PRIMARY KEY,
+                        usuario_id       BIGINT       NOT NULL,
+                        creada           TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+                        ultima_actividad TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+                        FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+                    )
+                    """.trimIndent()
+                )
+                // CONTRATOS: facturas de servicios básicos (simula las empresas de luz, agua e internet).
+                st.executeUpdate(
+                    """
+                    CREATE TABLE IF NOT EXISTS contratos (
+                        codigo     VARCHAR(20)   PRIMARY KEY,
+                        servicio   VARCHAR(10)   NOT NULL,
+                        titular    VARCHAR(100)  NOT NULL,
+                        monto      DECIMAL(12,2) NOT NULL,
+                        pagado     BOOLEAN       NOT NULL DEFAULT FALSE,
+                        pagado_por VARCHAR(20)   NULL,
+                        fecha_pago TIMESTAMP(3)  NULL
+                    )
+                    """.trimIndent()
+                )
+                // Cuentas de demostración (INSERT IGNORE = si ya existen, no hace nada).
                 st.executeUpdate(
                     """
                     INSERT IGNORE INTO cuentas (numero, titular, saldo) VALUES
@@ -81,26 +122,78 @@ object BaseDeDatos {
                         ('1003', 'Usuario Postman B', 300.00)
                     """.trimIndent()
                 )
+                // Facturas de ejemplo: 3 por servicio (sin pagar).
+                st.executeUpdate(
+                    """
+                    INSERT IGNORE INTO contratos (codigo, servicio, titular, monto) VALUES
+                        ('445566', 'LUZ', 'Pamela Carriel', 32.75),
+                        ('445567', 'LUZ', 'Pamela Carriel', 28.10),
+                        ('112233', 'LUZ', 'Usuario Postman A', 41.10),
+                        ('778899', 'AGUA', 'Pamela Carriel', 18.40),
+                        ('778900', 'AGUA', 'Pamela Carriel', 21.05),
+                        ('334455', 'AGUA', 'Usuario Postman B', 15.60),
+                        ('NET2026', 'INTERNET', 'Pamela Carriel', 25.00),
+                        ('NET2027', 'INTERNET', 'Pamela Carriel', 25.00),
+                        ('NET3001', 'INTERNET', 'Usuario Postman A', 30.00)
+                    """.trimIndent()
+                )
             }
+            // Usuarios de demostración, enlazados a las cuentas 1001, 1002 y 1003.
+            crearUsuarioDemo(con, "pamela", "Pamela Carriel", "1001")
+            crearUsuarioDemo(con, "usuarioa", "Usuario Postman A", "1002")
+            crearUsuarioDemo(con, "usuariob", "Usuario Postman B", "1003")
         }
-        log.info("Tablas listas (cuentas, transacciones)")
+        log.info("Tablas listas (usuarios, cuentas, transacciones, sesiones, contratos)")
+    }
+
+    // ¿Existe una columna en una tabla? (consulta el catálogo de MySQL: information_schema).
+    private fun existeColumna(con: Connection, tabla: String, columna: String): Boolean =
+        con.prepareStatement(
+            "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?"
+        ).use { ps ->
+            ps.setString(1, tabla)
+            ps.setString(2, columna)
+            ps.executeQuery().use { rs -> rs.next() && rs.getInt(1) > 0 }
+        }
+
+    // Crea un usuario de demostración (si no existe) y lo enlaza a una cuenta ya existente.
+    private fun crearUsuarioDemo(con: Connection, usuario: String, nombre: String, cuenta: String) {
+        val existe = con.prepareStatement("SELECT 1 FROM usuarios WHERE usuario = ?").use { ps ->
+            ps.setString(1, usuario)
+            ps.executeQuery().use { it.next() }
+        }
+        if (existe) return
+        val sal = Seguridad.nuevaSal()
+        val id = con.prepareStatement(
+            "INSERT INTO usuarios (usuario, nombre, password_hash, sal) VALUES (?, ?, ?, ?)",
+            Statement.RETURN_GENERATED_KEYS
+        ).use { ps ->
+            ps.setString(1, usuario)
+            ps.setString(2, nombre)
+            ps.setString(3, Seguridad.hashear(PASSWORD_DEMO, sal))
+            ps.setString(4, sal)
+            ps.executeUpdate()
+            ps.generatedKeys.use { it.next(); it.getLong(1) }
+        }
+        con.prepareStatement("UPDATE cuentas SET usuario_id = ? WHERE numero = ?").use { ps ->
+            ps.setLong(1, id)
+            ps.setString(2, cuenta)
+            ps.executeUpdate()
+        }
+        log.info("Usuario de demostración creado: $usuario -> cuenta $cuenta")
     }
 
     // Ejecuta un bloque como TRANSACCIÓN SQL: o se guarda TODO, o no se guarda NADA.
-    // Ejemplo: en una transferencia se resta a una cuenta y se suma a otra; si algo falla
-    // a la mitad, el "rollback" deshace la resta y el dinero no desaparece.
-    // "<T>" = genérico: el bloque puede devolver cualquier tipo de resultado.
-    // "(Connection) -> T" = lambda que recibe la conexión y devuelve un T.
     fun <T> transaccion(bloque: (Connection) -> T): T {
         pool.connection.use { con ->
-            con.autoCommit = false           // No guardar automáticamente cada sentencia.
+            con.autoCommit = false
             try {
-                val resultado = bloque(con)  // Ejecutamos todas las operaciones del bloque.
+                val resultado = bloque(con)
                 con.commit()                 // Todo salió bien: se guarda de forma definitiva.
                 return resultado
             } catch (e: Exception) {
                 con.rollback()               // Algo falló: se deshace TODO lo del bloque.
-                throw e                      // Y se relanza el error para responder al cliente.
+                throw e
             }
         }
     }

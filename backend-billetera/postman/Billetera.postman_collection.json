@@ -1,87 +1,108 @@
 {
   "info": {
     "name": "Billetera Distribuida",
-    "description": "Pruebas del servidor Ktor + MySQL. Cuenta de la app: 1001. Otros usuarios: 1002 y 1003.\nWebSocket (crear aparte en Postman: New > WebSocket): ws://localhost:8090/ws/1001",
+    "description": "Servidor Ktor + MySQL con login.\n\n1) Ejecuta un LOGIN: el token se guarda solo en la variable {{token}} y las demás peticiones lo usan.\n2) Usuarios de demostración (contraseña demo123): pamela (1001, la app), usuarioa (1002), usuariob (1003).\n3) DEMO en vivo: con la app abierta como pamela, ejecuta 'A3. Login usuarioa' y luego '5. DEMO'.\n4) WebSocket (New > WebSocket): ws://localhost:8090/ws?token=TU_TOKEN\n\nLa sesión se cierra tras 5 minutos sin actividad (401 SESION_EXPIRADA).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+  },
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Si la respuesta trae un token (login o registro), se guarda para las siguientes peticiones.",
+          "try { const r = pm.response.json(); if (r && r.token) { pm.collectionVariables.set('token', r.token); console.log('Token guardado para', r.usuario, '(cuenta', r.cuenta + ')'); } } catch (e) {}"
+        ]
+      }
+    }
+  ],
   "variable": [
-    { "key": "baseUrl", "value": "http://localhost:8090" }
+    { "key": "baseUrl", "value": "http://localhost:8090" },
+    { "key": "token", "value": "" }
   ],
   "item": [
+    { "name": "0. Servidor vivo", "request": { "auth": { "type": "noauth" }, "method": "GET", "url": "{{baseUrl}}/" } },
     {
-      "name": "0. Servidor vivo",
-      "request": { "method": "GET", "url": "{{baseUrl}}/" }
-    },
-    {
-      "name": "1. Consultar cuenta 1001",
-      "request": { "method": "GET", "url": "{{baseUrl}}/cuentas/1001" }
-    },
-    {
-      "name": "2. Depositar 50 en 1001",
+      "name": "A1. Registro (usuario nuevo, $100 de bienvenida)",
       "request": {
-        "method": "POST",
+        "auth": { "type": "noauth" }, "method": "POST",
         "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "body": { "mode": "raw", "raw": "{\n  \"cuenta\": \"1001\",\n  \"monto\": 50.0\n}" },
-        "url": "{{baseUrl}}/depositar"
+        "body": { "mode": "raw", "raw": "{\n  \"usuario\": \"nuevo_usuario\",\n  \"nombre\": \"Nombre Apellido\",\n  \"password\": \"clave2026\"\n}" },
+        "url": "{{baseUrl}}/auth/registro"
       }
     },
     {
-      "name": "3. Retirar 20 de 1001",
+      "name": "A2. Login pamela (cuenta 1001)",
       "request": {
-        "method": "POST",
+        "auth": { "type": "noauth" }, "method": "POST",
         "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "body": { "mode": "raw", "raw": "{\n  \"cuenta\": \"1001\",\n  \"monto\": 20.0\n}" },
-        "url": "{{baseUrl}}/retirar"
+        "body": { "mode": "raw", "raw": "{\n  \"usuario\": \"pamela\",\n  \"password\": \"demo123\"\n}" },
+        "url": "{{baseUrl}}/auth/login"
+      }
+    },
+    {
+      "name": "A3. Login usuarioa (cuenta 1002, para la DEMO)",
+      "request": {
+        "auth": { "type": "noauth" }, "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"usuario\": \"usuarioa\",\n  \"password\": \"demo123\"\n}" },
+        "url": "{{baseUrl}}/auth/login"
+      }
+    },
+    {
+      "name": "A4. Login con contraseña incorrecta (espera 401)",
+      "request": {
+        "auth": { "type": "noauth" }, "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"usuario\": \"pamela\",\n  \"password\": \"incorrecta1\"\n}" },
+        "url": "{{baseUrl}}/auth/login"
+      }
+    },
+    { "name": "1. Mi cuenta", "request": { "method": "GET", "url": "{{baseUrl}}/mi-cuenta" } },
+    { "name": "1b. Mis movimientos", "request": { "method": "GET", "url": "{{baseUrl}}/movimientos" } },
+    {
+      "name": "2. Depositar 50",
+      "request": {
+        "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"monto\": 50.0\n}" }, "url": "{{baseUrl}}/depositar"
+      }
+    },
+    {
+      "name": "3. Retirar 20",
+      "request": {
+        "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"monto\": 20.0\n}" }, "url": "{{baseUrl}}/retirar"
       }
     },
     {
       "name": "4. Retirar SIN FONDOS (espera 409)",
       "request": {
-        "method": "POST",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "body": { "mode": "raw", "raw": "{\n  \"cuenta\": \"1001\",\n  \"monto\": 999999.0\n}" },
-        "url": "{{baseUrl}}/retirar"
+        "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"monto\": 999999.0\n}" }, "url": "{{baseUrl}}/retirar"
       }
     },
     {
-      "name": "5. DEMO: 1002 transfiere 25 a 1001 (la app lo recibe en tiempo real)",
+      "name": "5. DEMO: transferir 25 a la cuenta 1001 (la app lo recibe en tiempo real)",
       "request": {
-        "method": "POST",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "body": { "mode": "raw", "raw": "{\n  \"cuentaOrigen\": \"1002\",\n  \"cuentaDestino\": \"1001\",\n  \"monto\": 25.0\n}" },
-        "url": "{{baseUrl}}/transferir"
+        "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"cuentaDestino\": \"1001\",\n  \"monto\": 25.0\n}" }, "url": "{{baseUrl}}/transferir"
       }
     },
+    { "name": "6. Ver titular de la cuenta 1001", "request": { "method": "GET", "url": "{{baseUrl}}/cuentas/1001" } },
+    { "name": "7. Consultar factura LUZ 445567", "request": { "method": "GET", "url": "{{baseUrl}}/contratos/445567?servicio=LUZ" } },
     {
-      "name": "6. 1001 transfiere 10 a 1003",
+      "name": "8. Pagar factura LUZ 445567 (2.ª vez: espera 409 FACTURA_PAGADA)",
       "request": {
-        "method": "POST",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "body": { "mode": "raw", "raw": "{\n  \"cuentaOrigen\": \"1001\",\n  \"cuentaDestino\": \"1003\",\n  \"monto\": 10.0\n}" },
-        "url": "{{baseUrl}}/transferir"
+        "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "body": { "mode": "raw", "raw": "{\n  \"servicio\": \"LUZ\",\n  \"contrato\": \"445567\"\n}" }, "url": "{{baseUrl}}/pagar-servicio"
       }
     },
-    {
-      "name": "7. Pagar servicio LUZ desde 1001",
-      "request": {
-        "method": "POST",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "body": { "mode": "raw", "raw": "{\n  \"cuenta\": \"1001\",\n  \"servicio\": \"LUZ\",\n  \"contrato\": \"445566\",\n  \"monto\": 32.75\n}" },
-        "url": "{{baseUrl}}/pagar-servicio"
-      }
-    },
-    {
-      "name": "8. Cuenta inexistente (espera 404)",
-      "request": { "method": "GET", "url": "{{baseUrl}}/cuentas/9999" }
-    },
-    {
-      "name": "9. Monto negativo (espera 400)",
-      "request": {
-        "method": "POST",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "body": { "mode": "raw", "raw": "{\n  \"cuenta\": \"1001\",\n  \"monto\": -5\n}" },
-        "url": "{{baseUrl}}/depositar"
-      }
-    }
+    { "name": "9. Contrato inexistente (espera 404)", "request": { "method": "GET", "url": "{{baseUrl}}/contratos/999999" } },
+    { "name": "10. Sin token (espera 401)", "request": { "auth": { "type": "noauth" }, "method": "GET", "url": "{{baseUrl}}/mi-cuenta" } },
+    { "name": "11. Cerrar sesión", "request": { "method": "POST", "url": "{{baseUrl}}/auth/logout" } }
   ]
 }
