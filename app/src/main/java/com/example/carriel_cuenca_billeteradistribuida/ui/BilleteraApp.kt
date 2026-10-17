@@ -4,14 +4,12 @@ package com.example.carriel_cuenca_billeteradistribuida.ui
 import androidx.activity.compose.rememberLauncherForActivityResult     // Abre diálogos del sistema y recibe la respuesta.
 import androidx.activity.result.contract.ActivityResultContracts       // Contrato "pedir un permiso".
 import androidx.compose.foundation.layout.Column
-import androidx.compose.ui.platform.LocalContext                       // Contexto de Android dentro de Compose.
-import com.example.carriel_cuenca_billeteradistribuida.util.PERMISO_RED_LOCAL
-import com.example.carriel_cuenca_billeteradistribuida.util.necesitaPermisoRedLocal
 import androidx.compose.foundation.layout.fillMaxSize                 // Ocupar toda la pantalla.
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding                     // Margen interno.
 import androidx.compose.material3.LinearProgressIndicator             // Barra de progreso animada.
 import androidx.compose.material3.Scaffold                            // Estructura base de la pantalla.
+import androidx.compose.material3.Snackbar                            // El mensaje temporal en sí.
 import androidx.compose.material3.SnackbarHost                        // Lugar donde aparecen los Snackbars.
 import androidx.compose.material3.SnackbarHostState                   // Controla qué Snackbar se muestra.
 import androidx.compose.runtime.Composable
@@ -21,10 +19,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember                              // Recuerda un valor entre redibujados.
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext                      // Contexto de Android dentro de Compose.
 import androidx.lifecycle.compose.collectAsStateWithLifecycle         // StateFlow -> estado de Compose.
 import androidx.lifecycle.viewmodel.compose.viewModel                 // Obtiene (o crea) el ViewModel.
 import com.example.carriel_cuenca_billeteradistribuida.model.EstadoOperacion
 import com.example.carriel_cuenca_billeteradistribuida.model.TipoOperacion
+import com.example.carriel_cuenca_billeteradistribuida.ui.components.OperacionDialog
+import com.example.carriel_cuenca_billeteradistribuida.ui.theme.RojoEgreso
+import com.example.carriel_cuenca_billeteradistribuida.ui.theme.VerdeIngreso
+import com.example.carriel_cuenca_billeteradistribuida.util.PERMISO_RED_LOCAL
+import com.example.carriel_cuenca_billeteradistribuida.util.necesitaPermisoRedLocal
 
 // Pantalla "raíz" de la app: une el ViewModel con la UI.
 @Composable
@@ -39,8 +44,9 @@ fun BilleteraApp(viewModel: BilleteraViewModel = viewModel(factory = BilleteraVi
     // Qué diálogo está abierto: null = ninguno. Es estado SOLO de la pantalla (no del ViewModel).
     var dialogoAbierto by remember { mutableStateOf<TipoOperacion?>(null) }
 
-    // Estado del Snackbar (mensaje temporal en la parte inferior).
+    // Estado del Snackbar y si el mensaje actual es un error (para pintarlo de rojo o de verde).
     val snackbarHostState = remember { SnackbarHostState() }
+    var mensajeEsError by remember { mutableStateOf(false) }
 
     // ---------- PERMISO DE RED LOCAL (Android 17) ----------
     val contexto = LocalContext.current
@@ -49,20 +55,22 @@ fun BilleteraApp(viewModel: BilleteraViewModel = viewModel(factory = BilleteraVi
         if (concedido) viewModel.iniciarConexion()       // Ya podemos hablar con el servidor (REST + WebSocket).
         else viewModel.permisoRedLocalDenegado()        // Sin permiso: solo datos locales.
     }
-    // LaunchedEffect(Unit): se ejecuta UNA vez al mostrar la pantalla (y al recrearla, ej. al rotar).
+    // LaunchedEffect(Unit): se ejecuta una vez al mostrar la pantalla (y al recrearla, ej. al rotar).
     LaunchedEffect(Unit) {
-        if (necesitaPermisoRedLocal(contexto)) pedirPermiso.launch(PERMISO_RED_LOCAL)  // Muestra el diálogo.
-        else viewModel.iniciarConexion()                                               // Ya concedido: conectar.
+        if (necesitaPermisoRedLocal(contexto)) pedirPermiso.launch(PERMISO_RED_LOCAL)
+        else viewModel.iniciarConexion()
     }
 
     // Cada vez que "estado" cambia, mostramos el mensaje correspondiente.
     LaunchedEffect(estado) {
         when (val e = estado) {
             is EstadoOperacion.Exito -> {
+                mensajeEsError = false
                 snackbarHostState.showSnackbar("✔ ${e.mensaje}")
                 viewModel.mensajeMostrado()
             }
             is EstadoOperacion.Error -> {
+                mensajeEsError = true
                 snackbarHostState.showSnackbar("✖ ${e.mensaje}")   // Ej.: "✖ Saldo insuficiente: ..."
                 viewModel.mensajeMostrado()
             }
@@ -72,17 +80,26 @@ fun BilleteraApp(viewModel: BilleteraViewModel = viewModel(factory = BilleteraVi
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
-        snackbarHost = { SnackbarHost(snackbarHostState) }
+        // Snackbar personalizado: VERDE oscuro si salió bien, ROJO si falló.
+        snackbarHost = {
+            SnackbarHost(snackbarHostState) { datos ->
+                Snackbar(
+                    snackbarData = datos,
+                    containerColor = if (mensajeEsError) RojoEgreso else VerdeIngreso,
+                    contentColor = Color.White
+                )
+            }
+        }
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding)) {
+            val procesando = estado is EstadoOperacion.Procesando
             // Mientras una operación está en curso, mostramos una barra de progreso arriba.
-            if (estado is EstadoOperacion.Procesando) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            }
+            if (procesando) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
             DashboardScreen(
                 saldo = saldo,
                 estadoConexion = estadoConexion,
                 movimientos = historial,
+                procesando = procesando,
                 // Al tocar un botón, solo ABRIMOS el diálogo de ese tipo.
                 onAccionClick = { tipo -> dialogoAbierto = tipo },
                 modifier = Modifier.fillMaxSize()
@@ -91,10 +108,12 @@ fun BilleteraApp(viewModel: BilleteraViewModel = viewModel(factory = BilleteraVi
     }
 
     // Si hay un diálogo abierto, lo dibujamos encima de todo.
-    // "?.let { tipo -> }" = solo si dialogoAbierto no es null; "tipo" es su valor ya sin "?".
+    // "?.let { tipo -> }" = solo si dialogoAbierto no es null.
     dialogoAbierto?.let { tipo ->
         OperacionDialog(
             tipo = tipo,
+            saldo = saldo,
+            estadoConexion = estadoConexion,
             onConfirmar = { solicitud ->
                 dialogoAbierto = null                       // Cerramos el diálogo...
                 viewModel.ejecutarOperacion(solicitud)      // ...y enviamos la operación al servidor.
