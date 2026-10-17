@@ -1,0 +1,38 @@
+EVIDENCIA - PRUEBA DE CONCURRENCIA Y DE HILOS DEL SERVIDOR
+Fecha: 17/10/2026. Servidor Ktor (motor CIO) en http://localhost:8090 + MySQL (puerto 3307).
+Cuenta dedicada: 1007 "Prueba Carga" (saldo inicial 100.00).
+Objetivo: demostrar que el servidor atiende MUCHAS peticiones a la vez EN VARIOS HILOS,
+y que el bloqueo de filas (SELECT ... FOR UPDATE) impide perder o duplicar dinero.
+
+===== PRUEBA 1: 40 DEPÓSITOS de $1 LANZADOS A LA VEZ (saldo inicial 100.00) =====
+Respuestas HTTP:   40 x 200
+Saldo final:       140.00   (esperado 140.00)
+-> Ninguna suma se perdió: las 40 operaciones simultáneas se aplicaron todas y exactamente una vez.
+   Sin bloqueo, varias habrían leído el mismo saldo y "pisado" el resultado de otras (condición de carrera).
+
+===== PRUEBA 2: 30 RETIROS de $10 LANZADOS A LA VEZ (saldo 140.00; solo alcanzan 14) =====
+Respuestas HTTP:   14 x 200 (aprobados)   +   16 x 409 SALDO_INSUFICIENTE (rechazados)
+Saldo final:       0.00   (esperado 0.00; NUNCA quedó negativo)
+-> Exactamente 14 retiros de $10 cabían en $140. Los otros 16 se rechazaron con 409.
+   El CHECK (saldo >= 0) de MySQL es una segunda barrera, pero no hizo falta: el FOR UPDATE serializó
+   el acceso a la fila de la cuenta, así cada retiro vio el saldo ya actualizado por el anterior.
+
+===== HILOS DEL SERVIDOR =====
+Hilos DISTINTOS usados durante la prueba: 27  (DefaultDispatcher-worker-N)
+Las operaciones con MySQL corren en Dispatchers.IO (hilos DefaultDispatcher-worker), nunca en un solo hilo.
+Ejemplo: 6 retiros atendidos en ~60 milisegundos por 6 hilos DISTINTOS (trabajo en paralelo real):
+  18:35:00.770 [DefaultDispatcher-worker-10] Retiro de 10.00 en 1007
+  18:35:00.786 [DefaultDispatcher-worker-8]  Retiro de 10.00 en 1007
+  18:35:00.801 [DefaultDispatcher-worker-28] Retiro de 10.00 en 1007
+  18:35:00.816 [DefaultDispatcher-worker-9]  Retiro de 10.00 en 1007
+  18:35:00.826 [DefaultDispatcher-worker-23] Retiro de 10.00 en 1007
+  18:35:00.834 [DefaultDispatcher-worker-21] Retiro de 10.00 en 1007
+Los rechazos por saldo insuficiente también se emitieron desde varios hilos:
+  18:35:00.902 [DefaultDispatcher-worker-2]  Error 409 SALDO_INSUFICIENTE: tienes 0.0 y se requieren 10.0
+  18:35:00.910 [DefaultDispatcher-worker-22] Error 409 SALDO_INSUFICIENTE: tienes 0.0 y se requieren 10.0
+  18:35:00.915 [DefaultDispatcher-worker-17] Error 409 SALDO_INSUFICIENTE: tienes 0.0 y se requieren 10.0
+
+CONCLUSIÓN
+- Concurrencia real: 70 peticiones simultáneas repartidas en 27 hilos de Dispatchers.IO.
+- Consistencia del dinero: 40 depósitos -> +$40 exactos; 14 de 30 retiros aprobados; saldo final 0.00, nunca negativo.
+- Mecanismos: corrutinas + Dispatchers.IO (no bloquean los hilos de red) y SELECT ... FOR UPDATE (serializa la fila).
