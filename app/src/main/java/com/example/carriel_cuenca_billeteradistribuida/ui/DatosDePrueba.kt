@@ -6,8 +6,9 @@ import com.example.carriel_cuenca_billeteradistribuida.model.CATEGORIA_SERVICIO_
 import com.example.carriel_cuenca_billeteradistribuida.model.Movimiento
 import com.example.carriel_cuenca_billeteradistribuida.model.TipoOperacion
 
-// DATOS FALSOS solo para la Fase 1 (ver cómo luce la pantalla).
-// En la Fase 2 el historial vendrá de Room y este archivo se borrará.
+// DATOS FALSOS. Desde la Fase 2 el historial real viene de Room;
+// esta lista solo se usa en la VISTA PREVIA de Android Studio (DashboardPreview).
+// El saldo falso se usa hasta la Fase 4, cuando lo dará el servidor.
 // "object" = una clase de la que existe UNA SOLA instancia (no se usa "new" ni constructor).
 object DatosDePrueba {
 
