@@ -1,0 +1,26 @@
+EVIDENCIA FASE 2 - Logcat filtrado por tag:HILOS
+Fecha: 17/10/2026 - Emulador Medium Phone API 37.0
+Prueba: abrir app -> tocar "Depositar" -> tocar "Pagar Servicios" -> cerrar la app (force-stop) -> volver a abrir.
+
+--- Primera ejecución (proceso 6833) ---
+10-17 15:42:16.228  6833  6904 D HILOS   : [DefaultDispatcher-worker-1] Room: leyendo historial (0 filas)
+10-17 15:42:16.229  6833  6833 D HILOS   : [main] UI: recibió 0 movimientos
+10-17 15:42:19.077  6833  6833 D HILOS   : [main] Click en Depósito
+10-17 15:42:19.078  6833  6906 D HILOS   : [DefaultDispatcher-worker-3] Room: insertando Depósito
+10-17 15:42:19.086  6833  6922 D HILOS   : [DefaultDispatcher-worker-4] Room: leyendo historial (1 filas)
+10-17 15:42:19.092  6833  6833 D HILOS   : [main] Guardado con id=1, de vuelta en la UI
+10-17 15:42:19.096  6833  6833 D HILOS   : [main] UI: recibió 1 movimientos
+10-17 15:42:21.207  6833  6833 D HILOS   : [main] Click en Pago de servicio
+10-17 15:42:21.208  6833  6906 D HILOS   : [DefaultDispatcher-worker-3] Room: insertando Pago de servicio
+10-17 15:42:21.214  6833  6833 D HILOS   : [main] Guardado con id=2, de vuelta en la UI
+10-17 15:42:21.220  6833  6922 D HILOS   : [DefaultDispatcher-worker-4] Room: leyendo historial (2 filas)
+10-17 15:42:21.225  6833  6833 D HILOS   : [main] UI: recibió 2 movimientos
+
+--- App cerrada por completo y abierta de nuevo (proceso NUEVO 6976) ---
+10-17 15:42:27.586  6976  7008 D HILOS   : [DefaultDispatcher-worker-2] Room: leyendo historial (2 filas)
+10-17 15:42:27.588  6976  6976 D HILOS   : [main] UI: recibió 2 movimientos
+
+INTERPRETACIÓN:
+- Lecturas y escrituras de Room -> DefaultDispatcher-worker-N (Dispatchers.IO).
+- Clicks y actualización de pantalla -> main (Dispatchers.Main).
+- Tras reiniciar (nuevo PID 6976) Room devuelve las 2 filas: el historial persiste.
