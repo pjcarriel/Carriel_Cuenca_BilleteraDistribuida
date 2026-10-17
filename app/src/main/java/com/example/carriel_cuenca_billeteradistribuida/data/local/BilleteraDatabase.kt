@@ -7,15 +7,18 @@ import androidx.room.Room                // Constructor de bases de datos Room.
 import androidx.room.RoomDatabase        // Clase base de toda base de datos Room.
 
 // @Database describe la base de datos:
-//   entities = las tablas que contiene (por ahora solo "movimientos").
-//   version = número de versión; si cambiamos la tabla en el futuro, se sube.
+//   entities = las tablas que contiene: "movimientos" y "cuenta_local" (último saldo conocido).
+//   version = número de versión. Pasó de 1 a 2 en la Fase 4 porque se agregó la tabla cuenta_local.
 //   exportSchema = false: no exportar el esquema a un archivo JSON (no lo necesitamos).
-@Database(entities = [MovimientoEntity::class], version = 1, exportSchema = false)
+@Database(entities = [MovimientoEntity::class, CuentaLocalEntity::class], version = 2, exportSchema = false)
 // "abstract" = clase incompleta: KSP genera la versión completa ("BilleteraDatabase_Impl").
 abstract class BilleteraDatabase : RoomDatabase() {
 
     // Room implementa esta función y nos entrega el DAO listo para usar.
     abstract fun movimientoDao(): MovimientoDao
+
+    // DAO de la tabla del último saldo conocido.
+    abstract fun cuentaDao(): CuentaDao
 
     // "companion object" = lo que va aquí pertenece a la CLASE, no a un objeto.
     // Se usa así: BilleteraDatabase.obtener(context)  (parecido a "static" en Java).
@@ -40,7 +43,12 @@ abstract class BilleteraDatabase : RoomDatabase() {
                     context.applicationContext,       // Contexto de TODA la app (no de una pantalla).
                     BilleteraDatabase::class.java,    // Qué clase de base de datos construir.
                     "billetera.db"                    // Nombre del archivo SQLite en el teléfono.
-                ).build()
+                )
+                    // Si la versión instalada es más vieja (1) que la del código (2), Room BORRA
+                    // y recrea las tablas en lugar de "migrarlas". Lo aceptamos porque la versión 1
+                    // solo tenía movimientos de PRUEBA. En una app real se escribiría una Migration.
+                    .fallbackToDestructiveMigration(dropAllTables = true)
+                    .build()
                     // "also" = haz algo más con el resultado: guardarlo en "instancia".
                     .also { instancia = it }
             }

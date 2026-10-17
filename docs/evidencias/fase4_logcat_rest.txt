@@ -1,0 +1,63 @@
+EVIDENCIA FASE 4 - Retrofit contra el servidor Ktor (Logcat filtrado por tag:HILOS y tag:HTTP)
+Fecha: 17/10/2026 - Emulador Medium Phone API 37.0 (Android 17) - Servidor http://10.0.2.2:8090
+
+--- 1. Al abrir la app: sincronizar saldo (GET) ---
+[main] ViewModel: sincronizando saldo con el servidor
+[DefaultDispatcher-worker-4] Repository: GET /cuentas/1001 (Retrofit)
+[OkHttp http://10.0.2.2:8090/...] --> GET http://10.0.2.2:8090/cuentas/1001
+[OkHttp http://10.0.2.2:8090/...] <-- 200 OK http://10.0.2.2:8090/cuentas/1001 (520ms)
+[main] ViewModel: saldo del servidor = 1273.0
+
+--- 2. Retiro sin fondos: el servidor responde 409 y la app muestra un mensaje (no se cierra) ---
+[main] ViewModel: enviando Retiro de 999999.0
+[DefaultDispatcher-worker-8] Repository: POST /retirar (Retrofit)
+[OkHttp http://10.0.2.2:8090/...] --> POST http://10.0.2.2:8090/retirar
+[OkHttp http://10.0.2.2:8090/...] <-- 409 Conflict http://10.0.2.2:8090/retirar (86ms)
+    "codigo": "SALDO_INSUFICIENTE",
+    "mensaje": "Saldo insuficiente: tienes 1273.0 y se requieren 999999.0"
+[DefaultDispatcher-worker-8] Repository: error HTTP 409 -> Saldo insuficiente: tienes 1273.0 y se requieren 999999.0
+[main] ViewModel: respuesta recibida, actualizando la UI
+
+--- 3. Depósito de 50 ---
+[main] ViewModel: enviando Depósito de 50.0
+[DefaultDispatcher-worker-8] Repository: POST /depositar (Retrofit)
+[OkHttp http://10.0.2.2:8090/...] <-- 200 OK http://10.0.2.2:8090/depositar (24ms)
+[DefaultDispatcher-worker-8] Repository: servidor OK (saldo 1323.0), guardando comprobante en Room
+[main] ViewModel: respuesta recibida, actualizando la UI
+
+--- 4. Transferencia de 25 a la cuenta 1002 ---
+[main] ViewModel: enviando Transferencia enviada de 25.0
+[DefaultDispatcher-worker-3] Repository: POST /transferir a 1002 (Retrofit)
+[OkHttp http://10.0.2.2:8090/...] {"cuentaDestino":"1002","cuentaOrigen":"1001","monto":25.0}
+[OkHttp http://10.0.2.2:8090/...] <-- 200 OK http://10.0.2.2:8090/transferir (26ms)
+[DefaultDispatcher-worker-3] Repository: servidor OK (saldo 1298.0), guardando comprobante en Room
+[main] ViewModel: respuesta recibida, actualizando la UI
+
+--- 5. Pago de AGUA, contrato 778899, por 18.40 ---
+[main] ViewModel: enviando Pago de servicio de 18.4
+[DefaultDispatcher-worker-8] Repository: POST /pagar-servicio AGUA (Retrofit)
+[OkHttp http://10.0.2.2:8090/...] <-- 200 OK http://10.0.2.2:8090/pagar-servicio (23ms)
+[DefaultDispatcher-worker-8] Repository: servidor OK (saldo 1279.6), guardando comprobante en Room
+[main] ViewModel: respuesta recibida, actualizando la UI
+Verificación en el servidor: GET /cuentas/1001 -> {"saldo":1279.6}  (app y MySQL coinciden)
+
+--- 6. Servidor APAGADO: la app se abre con los datos de Room ---
+[main] ViewModel: sincronizando saldo con el servidor
+[DefaultDispatcher-worker-4] Repository: GET /cuentas/1001 (Retrofit)
+[DefaultDispatcher-worker-4] Repository: leyendo historial de Room (3 filas)
+[DefaultDispatcher-worker-4] Repository: sin conexión (ConnectException)
+-> Pantalla: saldo $1,279.60 (último conocido) e historial completo (fase4_sin_servidor.png).
+
+TRES HILOS DISTINTOS EN CADA OPERACIÓN:
+  main                         -> ViewModel (clic y actualización de la UI)
+  DefaultDispatcher-worker-N   -> Repository (withContext(Dispatchers.IO): Room y llamada a Retrofit)
+  OkHttp http://10.0.2.2:8090  -> hilo propio de OkHttp que hace la E/S de red
+Ninguna operación de red ni de base de datos se ejecutó en main.
+
+PROBLEMAS ENCONTRADOS Y SOLUCIÓN
+1) Android 17 (API 37) bloquea las conexiones de las apps a la red local (10.0.2.2) si no tienen el
+   permiso peligroso android.permission.ACCESS_LOCAL_NETWORK -> "SocketTimeoutException: failed to connect".
+   Solución: declararlo en el Manifest y pedirlo en tiempo de ejecución (fase4_permiso_red_local.png).
+2) El motor Netty de Ktor no respondía a las conexiones que llegan desde el emulador en esta PC (Windows),
+   aunque sí a las de la propia PC; un servidor Java mínimo y uno Python sí respondían.
+   Solución: cambiar el motor de Ktor a CIO (Coroutine I/O). El puerto pasó de 8080 a 8090.

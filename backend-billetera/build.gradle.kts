@@ -14,7 +14,7 @@ val ktorVersion = "3.1.3"
 dependencies {
     // --- Ktor: framework de servidor web hecho en Kotlin ---
     implementation("io.ktor:ktor-server-core:$ktorVersion")                  // Núcleo del servidor.
-    implementation("io.ktor:ktor-server-netty:$ktorVersion")                 // Motor de red (Netty) que atiende conexiones.
+    implementation("io.ktor:ktor-server-cio:$ktorVersion")                   // Motor de red CIO (Coroutine I/O): atiende conexiones con corrutinas.
     implementation("io.ktor:ktor-server-content-negotiation:$ktorVersion")   // Recibir/enviar JSON automáticamente.
     implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")  // Conversor JSON (kotlinx.serialization).
     implementation("io.ktor:ktor-server-websockets:$ktorVersion")            // Soporte de WebSocket.

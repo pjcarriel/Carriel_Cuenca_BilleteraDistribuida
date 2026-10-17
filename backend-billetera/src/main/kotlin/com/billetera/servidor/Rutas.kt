@@ -72,7 +72,7 @@ fun Application.configurarRutas() {
             call.respond(CuentaRepositorio.pagarServicio(req.cuenta, req.servicio, req.contrato, req.monto))
         }
 
-        // WebSocket  ws://localhost:8080/ws/1001
+        // WebSocket  ws://localhost:8090/ws/1001
         // El celular abre esta conexión y la mantiene ABIERTA; el servidor le envía mensajes cuando quiera.
         webSocket("/ws/{cuenta}") {
             val cuenta = call.parameters["cuenta"] ?: return@webSocket   // Sin cuenta: cerramos.

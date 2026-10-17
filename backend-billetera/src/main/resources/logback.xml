@@ -7,8 +7,7 @@
             <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level - %msg%n</pattern>
         </encoder>
     </appender>
-    <!-- Netty y Hikari escriben demasiado: solo mostramos sus advertencias. -->
-    <logger name="io.netty" level="WARN"/>
+    <!-- Hikari (pool de conexiones) escribe demasiado: solo mostramos sus advertencias. -->
     <logger name="com.zaxxer.hikari" level="WARN"/>
     <!-- Nivel general: INFO (mensajes informativos y errores). -->
     <root level="INFO">

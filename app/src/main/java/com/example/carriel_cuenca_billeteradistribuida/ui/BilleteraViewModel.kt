@@ -7,95 +7,90 @@ import androidx.lifecycle.viewModelScope                       // Ámbito de cor
 import androidx.lifecycle.viewmodel.initializer                // Cómo construir el ViewModel.
 import androidx.lifecycle.viewmodel.viewModelFactory           // DSL para declarar la fábrica.
 import com.example.carriel_cuenca_billeteradistribuida.data.BilleteraRepository
+import com.example.carriel_cuenca_billeteradistribuida.data.Resultado
 import com.example.carriel_cuenca_billeteradistribuida.data.local.BilleteraDatabase
-import com.example.carriel_cuenca_billeteradistribuida.model.CATEGORIA_SERVICIO_BASICO
+import com.example.carriel_cuenca_billeteradistribuida.data.remote.RetrofitClient
 import com.example.carriel_cuenca_billeteradistribuida.model.EstadoOperacion
 import com.example.carriel_cuenca_billeteradistribuida.model.Movimiento
-import com.example.carriel_cuenca_billeteradistribuida.model.TipoOperacion
+import com.example.carriel_cuenca_billeteradistribuida.model.Solicitud
 import com.example.carriel_cuenca_billeteradistribuida.util.logHilo
-import kotlinx.coroutines.CancellationException                // Señal de "corrutina cancelada".
 import kotlinx.coroutines.flow.MutableStateFlow                // Estado que SE PUEDE cambiar.
 import kotlinx.coroutines.flow.SharingStarted                  // Cuándo empezar/parar de escuchar un Flow.
 import kotlinx.coroutines.flow.StateFlow                       // Estado de SOLO LECTURA.
 import kotlinx.coroutines.flow.asStateFlow                     // Convierte Mutable -> solo lectura.
 import kotlinx.coroutines.flow.stateIn                         // Convierte un Flow en StateFlow.
-import kotlinx.coroutines.flow.update                          // Cambia un MutableStateFlow de forma segura.
 import kotlinx.coroutines.launch                               // Lanza una corrutina.
 
 // VIEWMODEL: guarda el ESTADO de la pantalla y recibe las acciones del usuario.
-// - Sobrevive a la rotación de la pantalla (la Activity se destruye y se recrea; el ViewModel no).
-// - No dibuja nada ni sabe de Compose: solo expone datos (StateFlow) y funciones.
-// - No toca Room directamente: se lo pide al Repository.
+// - Sobrevive a la rotación de la pantalla.
+// - No toca Room ni Retrofit directamente: se lo pide al Repository.
+// - Todo lo que hace aquí corre en el hilo MAIN; el Repository salta a IO por su cuenta.
 class BilleteraViewModel(
-    private val repositorio: BilleteraRepository   // Recibido desde afuera (lo crea la Factory de abajo).
-) : ViewModel() {                                   // ":" = hereda de ViewModel.
+    private val repositorio: BilleteraRepository
+) : ViewModel() {
 
     // ---------------- ESTADO QUE OBSERVA LA PANTALLA ----------------
-    // Patrón "backing property": la versión MUTABLE es privada (_saldo) y
-    // hacia afuera se expone una versión de SOLO LECTURA (saldo).
-    // Así, solo el ViewModel puede cambiar el estado; la UI solo lo lee.
 
-    // Historial: viene de Room a través del Repository.
-    // stateIn convierte el Flow en un StateFlow que siempre tiene un "valor actual".
-    // WhileSubscribed(5_000): deja de escuchar a Room 5 s después de que nadie mire
-    // (ej. app en segundo plano), pero sobrevive a una rotación (que dura < 5 s).
+    // Historial desde Room (sigue funcionando sin internet).
     val historial: StateFlow<List<Movimiento>> = repositorio.observarHistorial()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    // Saldo: provisional (datos de prueba) hasta la Fase 4, cuando lo dará el servidor.
-    private val _saldo = MutableStateFlow(DatosDePrueba.saldo)
-    val saldo: StateFlow<Double> = _saldo.asStateFlow()
+    // Saldo REAL: el último que respondió el servidor, guardado en Room.
+    // "Double?" = null mientras todavía no se conoce (la tarjeta muestra "$ --").
+    val saldo: StateFlow<Double?> = repositorio.observarSaldo()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     // Estado del WebSocket: siempre false hasta la Fase 5.
     private val _enLinea = MutableStateFlow(false)
     val enLinea: StateFlow<Boolean> = _enLinea.asStateFlow()
 
-    // Estado de la última operación (para mostrar mensajes de éxito o error).
-    // El tipo se escribe explícito (<EstadoOperacion>) para poder asignarle cualquier opción de la familia.
+    // Estado de la última operación (Procesando muestra la barra de progreso; Exito/Error, un mensaje).
     private val _estado = MutableStateFlow<EstadoOperacion>(EstadoOperacion.Inactivo)
     val estado: StateFlow<EstadoOperacion> = _estado.asStateFlow()
 
-    // ---------------- ACCIONES DEL USUARIO ----------------
+    // ---------------- ACCIONES ----------------
+    // Nota: el saldo NO se pide al crear el ViewModel, sino cuando la pantalla lo indica,
+    // porque en Android 17 primero hay que obtener el permiso de red local (ver BilleteraApp).
 
-    // Se llama al tocar un botón. En esta fase guarda un movimiento de prueba de $10;
-    // en la Fase 4 aquí se llamará al servidor por REST.
-    fun ejecutarOperacion(tipo: TipoOperacion) {
-        // Si ya hay una operación en curso, ignoramos el toque (evita dobles clics).
-        // "is" pregunta "¿es de este tipo?".
+    // El usuario negó el permiso de red local: la app funciona solo con los datos guardados.
+    fun permisoRedLocalDenegado() {
+        _estado.value = EstadoOperacion.Error("Sin permiso de red local: no se puede contactar al servidor")
+    }
+
+    // Pide el saldo al servidor. Si no hay conexión, se queda el último guardado en Room.
+    fun sincronizarSaldo() {
+        viewModelScope.launch {
+            logHilo("ViewModel: sincronizando saldo con el servidor")
+            // "when" sobre Resultado (sealed class): Exito o Error, no hay otra opción.
+            when (val resultado = repositorio.sincronizarSaldo()) {
+                is Resultado.Exito -> logHilo("ViewModel: saldo del servidor = ${resultado.datos}")
+                is Resultado.Error -> _estado.value = EstadoOperacion.Error(resultado.mensaje)
+            }
+        }
+    }
+
+    // Se llama al CONFIRMAR un diálogo. Envía la operación al servidor por REST.
+    fun ejecutarOperacion(solicitud: Solicitud) {
+        // Si ya hay una operación en curso, ignoramos el toque (evita enviar dos veces).
         if (_estado.value is EstadoOperacion.Procesando) return
 
-        // viewModelScope.launch: corrutina que corre en el hilo MAIN
-        // y se cancela sola si el ViewModel se destruye (no hay fugas de memoria).
+        // Corrutina en el hilo MAIN; se cancela sola si el ViewModel se destruye.
         viewModelScope.launch {
-            logHilo("ViewModel: click en ${tipo.etiqueta}")                // main
-            _estado.value = EstadoOperacion.Procesando
+            logHilo("ViewModel: enviando ${solicitud.tipo.etiqueta} de ${solicitud.monto}")   // main
+            _estado.value = EstadoOperacion.Procesando        // La UI muestra la barra de progreso.
 
-            val monto = 10.0
-            val movimiento = Movimiento(
-                tipo = tipo,
-                monto = monto,
-                fechaHora = System.currentTimeMillis(),
-                detalle = "Prueba MVVM (Fase 3)",
-                categoria = if (tipo == TipoOperacion.PAGO_SERVICIO) CATEGORIA_SERVICIO_BASICO else null
-            )
+            // Esta llamada SUSPENDE la corrutina: el Repository va a IO, llama a Retrofit,
+            // guarda en Room y regresa. Mientras tanto el hilo main sigue dibujando (cero ANR).
+            val resultado = repositorio.ejecutar(solicitud)
 
-            // try/catch: si algo falla, mostramos un error en vez de cerrar la app.
-            try {
-                // Esta llamada SUSPENDE la corrutina: el Repository salta a IO,
-                // guarda y regresa. Mientras tanto, el hilo main sigue libre para la UI.
-                val id = repositorio.guardarMovimiento(movimiento)
-                logHilo("ViewModel: guardado id=$id, actualizando la UI")  // main otra vez
-
-                // update { } cambia el valor de forma segura aunque varios hilos lo toquen.
-                // "if" como expresión: suma si es ingreso, resta si es egreso.
-                _saldo.update { actual -> if (tipo.esIngreso) actual + monto else actual - monto }
-                _estado.value = EstadoOperacion.Exito("${tipo.etiqueta} de ${formatearMonto(monto)} guardado")
-            } catch (e: CancellationException) {
-                throw e   // Una cancelación NO es un error: se deja pasar (regla de las corrutinas).
-            } catch (e: Exception) {
-                logHilo("ViewModel: error ${e.message}")
-                _estado.value = EstadoOperacion.Error("No se pudo guardar: ${e.message}")
+            logHilo("ViewModel: respuesta recibida, actualizando la UI")                     // main otra vez
+            _estado.value = when (resultado) {
+                // Éxito: mostramos el mensaje del servidor (ej. "Depósito realizado").
+                is Resultado.Exito -> EstadoOperacion.Exito(resultado.datos.mensaje)
+                // Error (409 saldo insuficiente, 404, sin conexión...): mensaje, SIN cerrar la app.
+                is Resultado.Error -> EstadoOperacion.Error(resultado.mensaje)
             }
+            // El saldo NO se cambia aquí: el Repository lo guardó en Room y el Flow "saldo" avisa solo.
         }
     }
 
@@ -105,16 +100,18 @@ class BilleteraViewModel(
     }
 
     // ---------------- FÁBRICA (construcción manual, sin Hilt) ----------------
-    // Android crea los ViewModels por nosotros (para que sobrevivan a la rotación),
-    // pero no sabe que el nuestro necesita un Repository. La Factory se lo explica.
     companion object {
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
-                // Obtenemos la Application. checkNotNull: si fuera null, falla con un mensaje claro.
                 val app = checkNotNull(this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY])
-                // Armamos la cadena a mano: Base de datos -> DAO -> Repository -> ViewModel.
-                val dao = BilleteraDatabase.obtener(app).movimientoDao()
-                BilleteraViewModel(BilleteraRepository(dao))
+                val db = BilleteraDatabase.obtener(app)
+                // Armamos la cadena a mano: Room (2 DAOs) + Retrofit -> Repository -> ViewModel.
+                val repositorio = BilleteraRepository(
+                    movimientoDao = db.movimientoDao(),
+                    cuentaDao = db.cuentaDao(),
+                    api = RetrofitClient.api
+                )
+                BilleteraViewModel(repositorio)
             }
         }
     }

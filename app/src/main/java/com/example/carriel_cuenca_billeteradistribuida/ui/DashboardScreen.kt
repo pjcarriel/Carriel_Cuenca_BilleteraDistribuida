@@ -67,7 +67,7 @@ import java.util.Locale
 // después: Room y el servidor). Así la pantalla es fácil de probar y explicar.
 @Composable
 fun DashboardScreen(
-    saldo: Double,                              // Saldo que se muestra en la tarjeta.
+    saldo: Double?,                             // Saldo de la tarjeta (null = aún desconocido).
     enLinea: Boolean,                           // true = WebSocket conectado.
     movimientos: List<Movimiento>,              // Historial a mostrar.
     // LAMBDA: una función que se pasa como parámetro.
@@ -117,7 +117,7 @@ fun DashboardScreen(
 // TARJETA DE SALDO (parte superior)
 // =====================================================================
 @Composable
-fun TarjetaSaldo(saldo: Double, enLinea: Boolean) {
+fun TarjetaSaldo(saldo: Double?, enLinea: Boolean) {
     // Card = tarjeta con esquinas redondeadas y sombra.
     Card(
         modifier = Modifier.fillMaxWidth(),                              // Todo el ancho.
@@ -143,7 +143,9 @@ fun TarjetaSaldo(saldo: Double, enLinea: Boolean) {
             Spacer(Modifier.height(12.dp))                               // Espacio vertical.
             // El saldo en NÚMEROS GRANDES, como pide el enunciado.
             Text(
-                text = formatearMonto(saldo),                            // Ej: "$ 1,250.75".
+                // Ej: "$ 1,250.75". Si el saldo es null (nunca se obtuvo del servidor), "$ --".
+                // "?.let(::formatearMonto)" = formatea solo si no es null; "?:" da el valor alterno.
+                text = saldo?.let(::formatearMonto) ?: "$ --",
                 color = Color.White,
                 fontSize = 40.sp,                                        // Letra grande.
                 fontWeight = FontWeight.Bold

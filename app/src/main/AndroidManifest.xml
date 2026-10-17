@@ -5,6 +5,11 @@
     <!-- Permiso para usar internet: sin esto, Retrofit y el WebSocket fallan. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Android 17 (API 37) bloquea por defecto las conexiones a la RED LOCAL (IPs privadas como
+         10.0.2.2 o 192.168.x.x). Para hablar con nuestro servidor hay que declarar este permiso
+         y, además, PEDIRLO al usuario en tiempo de ejecución (es un permiso "peligroso"). -->
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
+
     <!-- usesCleartextTraffic="true": permite HTTP sin cifrar (http:// y ws://).
          Lo necesitamos porque nuestro servidor local (10.0.2.2) no usa HTTPS. -->
     <application

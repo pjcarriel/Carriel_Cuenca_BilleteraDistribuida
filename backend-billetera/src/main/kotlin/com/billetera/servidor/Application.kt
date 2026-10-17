@@ -6,7 +6,7 @@ import io.ktor.serialization.kotlinx.json.json                     // Formato JS
 import io.ktor.server.application.Application
 import io.ktor.server.application.install                         // Instala un "plugin" en el servidor.
 import io.ktor.server.engine.embeddedServer                       // Crea el servidor dentro de nuestra app.
-import io.ktor.server.netty.Netty                                 // Motor de red.
+import io.ktor.server.cio.CIO                                     // Motor de red CIO (basado en corrutinas).
 import io.ktor.server.plugins.BadRequestException                 // JSON mal formado o incompleto.
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.statuspages.StatusPages
@@ -20,16 +20,18 @@ import kotlin.time.Duration.Companion.seconds                      // Permite es
 
 private val log = LoggerFactory.getLogger("Servidor")
 
-// Puerto donde escucha el servidor. Desde el emulador se llega con http://10.0.2.2:8080
-const val PUERTO = 8080
+// Puerto donde escucha el servidor. Desde el emulador se llega con http://10.0.2.2:8090
+const val PUERTO = 8090
 
 // PUNTO DE ENTRADA: lo que se ejecuta con "gradlew run".
 fun main() {
     BaseDeDatos.iniciar()                                // 1. Conectar a MySQL y preparar las tablas.
     log.info("Servidor iniciando en http://localhost:$PUERTO  (emulador: http://10.0.2.2:$PUERTO)")
-    // 2. Crear y arrancar el servidor. host "0.0.0.0" = aceptar conexiones de cualquier interfaz de red.
+    // 2. Crear y arrancar el servidor con el motor CIO. host "0.0.0.0" = aceptar conexiones de cualquier interfaz.
+    // Usamos CIO y no Netty: en las pruebas (Windows), Netty respondía a la PC pero NO a las conexiones
+    // que llegan desde el emulador (10.0.2.2); con CIO ambas funcionan. CIO es 100 % Kotlin y usa corrutinas.
     // "module = Application::modulo" = referencia a la función que configura el servidor.
-    embeddedServer(Netty, port = PUERTO, host = "0.0.0.0", module = Application::modulo)
+    embeddedServer(CIO, port = PUERTO, host = "0.0.0.0", module = Application::modulo)
         .start(wait = true)                              // wait = true: el programa queda escuchando.
 }
 

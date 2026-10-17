@@ -1,11 +1,11 @@
 {
   "info": {
     "name": "Billetera Distribuida",
-    "description": "Pruebas del servidor Ktor + MySQL. Cuenta de la app: 1001. Otros usuarios: 1002 y 1003.\nWebSocket (crear aparte en Postman: New > WebSocket): ws://localhost:8080/ws/1001",
+    "description": "Pruebas del servidor Ktor + MySQL. Cuenta de la app: 1001. Otros usuarios: 1002 y 1003.\nWebSocket (crear aparte en Postman: New > WebSocket): ws://localhost:8090/ws/1001",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "baseUrl", "value": "http://localhost:8080" }
+    { "key": "baseUrl", "value": "http://localhost:8090" }
   ],
   "item": [
     {
