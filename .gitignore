@@ -13,3 +13,16 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Archivos personales del IDE (cambian en cada PC, no se suben)
+/.idea/deploymentTargetSelector.xml
+/.idea/deviceManager.xml
+/.idea/studiobot.xml
+# Caché del compilador de Kotlin
+.kotlin/
+# Llaves de firma del APK: NUNCA se suben a GitHub
+*.jks
+*.keystore
+keystore.properties
+# APK de release generados
+/app/release/
