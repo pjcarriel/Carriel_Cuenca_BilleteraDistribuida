@@ -1,15 +1,40 @@
 // Paquete "data.remote": todo lo que se comunica con el SERVIDOR por la red.
 package com.example.carriel_cuenca_billeteradistribuida.data.remote
 
+import android.content.Context
+
 // Configuración de la conexión con el servidor Ktor.
-// (Desde la Fase 6.5 la cuenta ya no es fija: llega con la SESIÓN del usuario que inicia sesión).
+// La DIRECCIÓN es configurable porque la misma app corre en dos sitios distintos:
+//   - En el EMULADOR, el servidor de la PC se alcanza con 10.0.2.2 (valor por defecto).
+//   - En un TELÉFONO REAL, hay que poner la IP de la PC en la red wifi (ej. 192.168.1.199).
+// Se guarda en las preferencias de la app (SharedPreferences), propias de cada dispositivo.
 object ConfigServidor {
 
-    // 10.0.2.2 es una dirección ESPECIAL del emulador: significa "la computadora anfitriona".
-    // Si se usa un CELULAR REAL, aquí iría la IP de la PC en la red Wi-Fi (ej. 192.168.1.50).
-    // Puerto 8090: el mismo que usa el servidor Ktor (Application.kt).
-    const val URL_BASE = "http://10.0.2.2:8090/"
+    const val HOST_DEFECTO = "10.0.2.2"      // El emulador llega así a la PC anfitriona.
+    const val PUERTO = 8090
 
-    // Dirección del WebSocket. "ws://" = WebSocket sin cifrar. El token va en la cabecera.
-    const val URL_WEBSOCKET = "ws://10.0.2.2:8090/ws"
+    private const val PREFS = "config_servidor"
+    private const val CLAVE_HOST = "host"
+
+    // @Volatile: lo leen varios hilos (OkHttp) y lo escribe la UI; todos ven el valor actual.
+    @Volatile
+    private var host: String = HOST_DEFECTO
+
+    // Se llama al abrir la app (MainActivity) para recuperar la dirección guardada.
+    fun cargar(context: Context) {
+        host = prefs(context).getString(CLAVE_HOST, HOST_DEFECTO) ?: HOST_DEFECTO
+    }
+
+    // Guarda una dirección nueva (desde la pantalla de login).
+    fun guardarHost(context: Context, nuevo: String) {
+        host = nuevo.trim().ifEmpty { HOST_DEFECTO }
+        prefs(context).edit().putString(CLAVE_HOST, host).apply()
+    }
+
+    fun host(): String = host
+    fun urlBase(): String = "http://$host:$PUERTO/"          // Para Retrofit (REST).
+    fun urlWebSocket(): String = "ws://$host:$PUERTO/ws"     // Para el WebSocket.
+
+    private fun prefs(context: Context) =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 }

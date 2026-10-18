@@ -29,13 +29,22 @@ object RetrofitClient {
         .readTimeout(10, TimeUnit.SECONDS)          // Si en 10 s no responde -> error.
         .build()
 
-    // La API de Retrofit. "by lazy" = se construye la primera vez que se usa.
-    val api: BilleteraApi by lazy {
-        Retrofit.Builder()
-            .baseUrl(ConfigServidor.URL_BASE)                   // http://10.0.2.2:8090/
-            .client(clienteHttp)
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-            .create(BilleteraApi::class.java)
-    }
+    // La API de Retrofit. Como la dirección del servidor puede cambiar (emulador vs teléfono),
+    // guardamos en caché la API junto con la URL con la que se creó. Si la URL cambió, se reconstruye.
+    @Volatile
+    private var cache: Pair<String, BilleteraApi>? = null
+
+    val api: BilleteraApi
+        get() {
+            val base = ConfigServidor.urlBase()
+            cache?.let { if (it.first == base) return it.second }    // Misma URL: reutilizamos.
+            val nueva = Retrofit.Builder()
+                .baseUrl(base)
+                .client(clienteHttp)
+                .addConverterFactory(GsonConverterFactory.create())
+                .build()
+                .create(BilleteraApi::class.java)
+            cache = base to nueva
+            return nueva
+        }
 }

@@ -114,12 +114,14 @@ object BaseDeDatos {
                     """.trimIndent()
                 )
                 // Cuentas de demostración (INSERT IGNORE = si ya existen, no hace nada).
+                // La cuenta 9999 (laboratorio) tiene saldo alto para lanzar muchas transferencias en la demo.
                 st.executeUpdate(
                     """
                     INSERT IGNORE INTO cuentas (numero, titular, saldo) VALUES
                         ('1001', 'Pamela Carriel', 1250.75),
                         ('1002', 'Usuario Postman A', 500.00),
-                        ('1003', 'Usuario Postman B', 300.00)
+                        ('1003', 'Usuario Postman B', 300.00),
+                        ('9999', 'Laboratorio de Pruebas', 100000.00)
                     """.trimIndent()
                 )
                 // Facturas de ejemplo: 3 por servicio (sin pagar).
@@ -142,6 +144,7 @@ object BaseDeDatos {
             crearUsuarioDemo(con, "pamela", "Pamela Carriel", "1001")
             crearUsuarioDemo(con, "usuarioa", "Usuario Postman A", "1002")
             crearUsuarioDemo(con, "usuariob", "Usuario Postman B", "1003")
+            crearUsuarioDemo(con, "laboratorio", "Laboratorio de Pruebas", "9999")
         }
         log.info("Tablas listas (usuarios, cuentas, transacciones, sesiones, contratos)")
     }

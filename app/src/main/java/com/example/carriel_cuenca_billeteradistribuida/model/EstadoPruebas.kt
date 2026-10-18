@@ -14,5 +14,6 @@ data class EstadoPruebas(
     val completadas: Int = 0,                 // Cuántas han terminado (sube en vivo).
     val hilos: Map<String, Int> = emptyMap(), // Hilo IO -> cuántas peticiones atendió.
     val hiloRespuesta: String = "",           // Hilo donde se procesan las respuestas (debe ser "main").
-    val tiempoMs: Long = 0                    // Tiempo total de las N peticiones concurrentes.
+    val tiempoMs: Long = 0,                   // Tiempo total de las N peticiones concurrentes.
+    val fallidas: Int = 0                     // Cuántas fallaron (en transferencias).
 )

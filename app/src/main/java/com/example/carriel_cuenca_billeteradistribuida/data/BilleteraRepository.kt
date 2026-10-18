@@ -174,6 +174,18 @@ class BilleteraRepository(
         ResultadoHilo(true, hiloIO)
     }
 
+    // Una TRANSFERENCIA (para la demo de dos pantallas del usuario laboratorio).
+    // Se ejecuta en Dispatchers.IO, guarda el comprobante en Room y devuelve el hilo IO que la atendió.
+    suspend fun transferenciaEnHilo(destino: String, monto: Double): ResultadoHilo = withContext(Dispatchers.IO) {
+        val hiloIO = Thread.currentThread().name
+        val ok = runCatching {
+            val r = api.transferir(TransferenciaRequest(destino, monto))
+            movimientoDao.insertar(crearMovimiento(Solicitud.Transferencia(destino, monto), r).aEntidad(cuenta))
+            guardarSaldo(r.saldo)
+        }.isSuccess
+        ResultadoHilo(ok, hiloIO)
+    }
+
     // ---------------------------- TIEMPO REAL (WebSocket) ----------------------------
 
     // Mantiene el túnel abierto con reconexión automática y backoff (1, 2, 4, 8, 10 s...).
@@ -186,7 +198,7 @@ class BilleteraRepository(
             _estadoConexion.value = EstadoConexion.CONECTANDO
             logHilo("Repository: abriendo WebSocket de la cuenta $cuenta (intento ${intentosFallidos + 1})")
             try {
-                webSocket.escuchar(ConfigServidor.URL_WEBSOCKET, token).collect { evento ->
+                webSocket.escuchar(ConfigServidor.urlWebSocket(), token).collect { evento ->
                     when (evento) {
                         EventoSocket.Abierto -> {
                             _estadoConexion.value = EstadoConexion.EN_LINEA

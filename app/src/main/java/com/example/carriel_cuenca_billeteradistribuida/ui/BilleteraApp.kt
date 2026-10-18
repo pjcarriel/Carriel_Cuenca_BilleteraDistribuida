@@ -118,6 +118,7 @@ fun BilleteraApp(
                 onAccionClick = { tipo -> dialogoAbierto = tipo },
                 onCerrarSesion = onCerrarSesion,
                 onAbrirPruebas = { mostrarPruebas = true },
+                esLaboratorio = sesion.usuario == "laboratorio",
                 modifier = Modifier.fillMaxSize()
             )
         }

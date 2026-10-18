@@ -49,6 +49,7 @@ fun DashboardScreen(
     onAccionClick: (TipoOperacion) -> Unit,      // Lambda: avisa qué botón se tocó.
     onCerrarSesion: () -> Unit,                  // Botón de cerrar sesión.
     onAbrirPruebas: () -> Unit,                  // Botón del panel de pruebas de concurrencia.
+    esLaboratorio: Boolean,                      // Solo el usuario "laboratorio" ve el panel.
     modifier: Modifier = Modifier
 ) {
     // Una sola LazyColumn para toda la pantalla: todo se desplaza junto.
@@ -65,8 +66,11 @@ fun DashboardScreen(
                     Text("Hola, ${nombre.substringBefore(" ")}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text("@$usuario", color = Color.Gray)
                 }
-                IconButton(onClick = onAbrirPruebas) {
-                    Icon(Icons.Filled.Science, contentDescription = "Pruebas de concurrencia")
+                // El panel de pruebas solo lo ve el usuario "laboratorio".
+                if (esLaboratorio) {
+                    IconButton(onClick = onAbrirPruebas) {
+                        Icon(Icons.Filled.Science, contentDescription = "Pruebas de concurrencia")
+                    }
                 }
                 IconButton(onClick = onCerrarSesion) {
                     Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Cerrar sesión")
@@ -122,7 +126,8 @@ fun DashboardPreview() {
             procesando = false,
             onAccionClick = { },
             onCerrarSesion = { },
-            onAbrirPruebas = { }
+            onAbrirPruebas = { },
+            esLaboratorio = true
         )
     }
 }

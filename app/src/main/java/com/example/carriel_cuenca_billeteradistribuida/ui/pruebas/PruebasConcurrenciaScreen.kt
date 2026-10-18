@@ -70,6 +70,10 @@ fun PruebasConcurrenciaScreen(
     // Campo de texto con el número de peticiones (por defecto 50).
     var numero by remember { mutableStateOf("50") }
     val n = numero.toIntOrNull() ?: 0
+    // Para la demo de dos pantallas: a qué cuenta se transfiere y cuánto.
+    var destino by remember { mutableStateOf("1001") }
+    var montoTransf by remember { mutableStateOf("1") }
+    val montoValido = montoTransf.replace(',', '.').toDoubleOrNull() ?: 0.0
 
     // RELOJ DE UI: se incrementa en CADA fotograma (~60 por segundo) en el hilo main.
     // Si el hilo main se bloquea, este número se CONGELA: es la prueba visual de "cero ANR".
@@ -130,6 +134,38 @@ fun PruebasConcurrenciaScreen(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
+
+            // ---------- DEMO DE DOS PANTALLAS: enviar N transferencias a una cuenta ----------
+            Card {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Enviar transferencias a una cuenta", fontWeight = FontWeight.Bold)
+                    Text("Lanza $n transferencias simultáneas; en el teléfono de la cuenta destino se ven llegar en tiempo real.", fontSize = 12.sp, color = Color.Gray)
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedTextField(
+                            value = destino,
+                            onValueChange = { destino = it.filter { c -> c.isDigit() }.take(10); onActividad() },
+                            label = { Text("Cuenta destino") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1.3f)
+                        )
+                        OutlinedTextField(
+                            value = montoTransf,
+                            onValueChange = { montoTransf = it; onActividad() },
+                            label = { Text("Monto c/u") },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    Button(
+                        onClick = { onActividad(); viewModel.lanzarTransferencias(n, destino, montoValido) },
+                        enabled = n in 1..200 && destino.length >= 4 && montoValido > 0 && !pruebas.ejecutando,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Enviar $n transferencias a $destino") }
+                }
+            }
+
+            // ---------- PRUEBAS DE HILOS PUROS (sin mover dinero) ----------
+            Text("O probar solo los hilos (sin mover dinero):", fontSize = 13.sp, color = Color.Gray)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(
                     onClick = { onActividad(); viewModel.lanzarConcurrentes(n, TipoPrueba.SERVIDOR) },
@@ -160,6 +196,9 @@ fun PruebasConcurrenciaScreen(
                         )
                         if (!pruebas.ejecutando) {
                             Text("Terminadas en ${pruebas.tiempoMs} ms", color = VerdeIngreso, fontWeight = FontWeight.SemiBold)
+                        }
+                        if (pruebas.fallidas > 0) {
+                            Text("Fallidas: ${pruebas.fallidas}", color = RojoEgreso, fontWeight = FontWeight.SemiBold)
                         }
                         Spacer(Modifier.height(4.dp))
                         Text("Hilos de fondo (Dispatchers.IO) que atendieron las peticiones:", fontWeight = FontWeight.SemiBold)

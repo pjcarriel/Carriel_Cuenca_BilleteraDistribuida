@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding           // Deja espacio para el teclado.
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -19,8 +20,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -39,6 +42,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import com.example.carriel_cuenca_billeteradistribuida.data.remote.ConfigServidor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -108,7 +113,47 @@ fun LoginScreen(
         }
         TextButton(onClick = onIrARegistro, enabled = !procesando) { Text("¿No tienes cuenta? Crear cuenta") }
         Text("Demo: pamela / demo123", color = Color.Gray, fontSize = 12.sp)
+
+        // Configurar la dirección del servidor (necesario en un teléfono real).
+        var mostrarConfig by remember { mutableStateOf(false) }
+        TextButton(onClick = { mostrarConfig = true }) {
+            Icon(Icons.Filled.Settings, contentDescription = null, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(4.dp))
+            Text("Servidor: ${ConfigServidor.host()}", fontSize = 12.sp)
+        }
+        if (mostrarConfig) ConfigServidorDialog(onCerrar = { mostrarConfig = false })
     }
+}
+
+// Diálogo para cambiar la IP/host del servidor (emulador: 10.0.2.2; teléfono real: IP de la PC).
+@Composable
+private fun ConfigServidorDialog(onCerrar: () -> Unit) {
+    val contexto = LocalContext.current
+    var host by remember { mutableStateOf(ConfigServidor.host()) }
+    AlertDialog(
+        onDismissRequest = onCerrar,
+        icon = { Icon(Icons.Filled.Settings, contentDescription = null) },
+        title = { Text("Dirección del servidor") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = host,
+                    onValueChange = { host = it.trim() },
+                    label = { Text("Host o IP") },
+                    singleLine = true,
+                    prefix = { Text("http://") },
+                    suffix = { Text(":${ConfigServidor.PUERTO}") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text("• Emulador: 10.0.2.2", fontSize = 12.sp, color = Color.Gray)
+                Text("• Teléfono real: la IP de la PC en la wifi (ej. 192.168.1.199)", fontSize = 12.sp, color = Color.Gray)
+            }
+        },
+        confirmButton = {
+            Button(onClick = { ConfigServidor.guardarHost(contexto, host); onCerrar() }) { Text("Guardar") }
+        },
+        dismissButton = { TextButton(onClick = onCerrar) { Text("Cancelar") } }
+    )
 }
 
 // Estructura común de Login y Registro: encabezado azul con ícono, y el formulario debajo.

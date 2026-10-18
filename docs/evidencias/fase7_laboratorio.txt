@@ -1,0 +1,20 @@
+EVIDENCIA FASE 7 - Usuario "laboratorio" y panel de pruebas de concurrencia (demo de dos pantallas)
+Fecha: 17/10/2026. Servidor Ktor (CIO) en 8090 + MySQL (3307).
+
+USUARIO laboratorio (cuenta 9999, saldo inicial 100000.00). El panel solo aparece para este usuario.
+
+PRUEBA: 50 TRANSFERENCIAS SIMULTÁNEAS de $1 de laboratorio (9999) -> pamela (1001)
+- App laboratorio: "50 / 50 transferencias terminadas en 356 ms", 24 hilos de Dispatchers.IO, 0 fallidas.
+- El reloj de la interfaz siguió corriendo (1889 fotogramas): la UI NO se congeló.
+- Saldo de pamela (1001): 1324.10 -> 1374.10  (+50.00 exactos; nada se perdió).
+- "Teléfono" de pamela (cliente WebSocket): recibió las 50 notificaciones TRANSFERENCIA_RECIBIDA en tiempo real.
+- Logcat app: [main] Pruebas: 50 transferencias a 1001 en 24 hilos IO (0 fallidas)
+
+PRUEBAS DE HILOS PUROS (sin mover dinero), mismo panel:
+- "50 al servidor" (red/Retrofit): 50/50 en 177 ms, 15 hilos IO, 0 operaciones en main.
+- "50 a Room" (base de datos): 50/50 en 23 ms, 12 hilos IO.
+- Botón de contraste "Bloquear el hilo main 3 s": congela el reloj, demostrando por qué el trabajo pesado va en IO.
+
+DIRECCIÓN DEL SERVIDOR CONFIGURABLE (para teléfono real):
+- En el login, botón "Servidor: <host>" abre un diálogo para cambiar la IP.
+- Emulador: 10.0.2.2 (por defecto). Teléfono real: IP de la PC en la wifi (ej. 192.168.1.199).

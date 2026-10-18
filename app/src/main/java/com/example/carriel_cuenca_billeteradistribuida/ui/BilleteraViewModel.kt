@@ -157,6 +157,36 @@ class BilleteraViewModel(
         }
     }
 
+    // Lanza N TRANSFERENCIAS simultáneas a una cuenta (demo de dos pantallas del usuario laboratorio).
+    // En la otra pantalla (la cuenta destino) se ven llegar en tiempo real por WebSocket.
+    fun lanzarTransferencias(n: Int, destino: String, monto: Double) {
+        if (_pruebas.value.ejecutando) return
+        _pruebas.value = EstadoPruebas(ejecutando = true, total = n)
+        viewModelScope.launch {
+            val t0 = System.currentTimeMillis()
+            val hilos = ConcurrentHashMap<String, Int>()
+            val completadas = AtomicInteger(0)
+            val fallidas = AtomicInteger(0)
+            val trabajos = (1..n).map {
+                launch {
+                    val r = repositorio.transferenciaEnHilo(destino, monto)
+                    hilos.merge(r.hilo, 1, Int::plus)
+                    if (!r.exito) fallidas.incrementAndGet()
+                    val hechas = completadas.incrementAndGet()
+                    _pruebas.value = _pruebas.value.copy(
+                        completadas = hechas,
+                        hilos = hilos.toSortedMap(),
+                        hiloRespuesta = Thread.currentThread().name,
+                        fallidas = fallidas.get()
+                    )
+                }
+            }
+            trabajos.joinAll()
+            _pruebas.value = _pruebas.value.copy(ejecutando = false, tiempoMs = System.currentTimeMillis() - t0)
+            logHilo("Pruebas: $n transferencias a $destino en ${hilos.size} hilos IO (${fallidas.get()} fallidas)")
+        }
+    }
+
     // CONTRASTE (lo que NO se debe hacer): bloquea el hilo main a propósito.
     // La UI se congela unos segundos; sirve para explicar por qué el trabajo pesado va en IO.
     // No usa corrutina: se llama directo desde el botón, que corre en main.
