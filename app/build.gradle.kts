@@ -1,3 +1,13 @@
+// Para leer el archivo keystore.properties con los datos de la firma.
+import java.util.Properties
+
+// Leemos keystore.properties (si existe). Así la contraseña NO queda escrita en este archivo
+// ni se sube a GitHub. Si no existe, el APK de release se generará sin firmar.
+val archivoFirma = rootProject.file("keystore.properties")
+val datosFirma = Properties().apply {
+    if (archivoFirma.exists()) archivoFirma.inputStream().use { load(it) }
+}
+
 // Archivo de compilación del módulo "app" (nuestra aplicación).
 plugins {
     // Convierte este módulo en una app Android. En AGP 9 ya incluye Kotlin,
@@ -33,13 +43,28 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Configuración de FIRMA del APK, leída de keystore.properties.
+    signingConfigs {
+        create("release") {
+            if (archivoFirma.exists()) {
+                storeFile = rootProject.file(datosFirma.getProperty("storeFile"))
+                storePassword = datosFirma.getProperty("storePassword")
+                keyAlias = datosFirma.getProperty("keyAlias")
+                keyPassword = datosFirma.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // Optimiza y reduce el APK de release.
+            // Desactivamos la ofuscación/reducción de código: con ella activada, R8 renombra clases
+            // y Retrofit/Gson/Room (que usan reflexión sobre los nombres) pueden fallar en tiempo de
+            // ejecución. Para un proyecto académico preferimos un APK que funcione con seguridad.
             optimization {
-                enable = true
-                packageScope = setOf("androidx.**", "kotlin.**", "kotlinx.**")
+                enable = false
             }
+            // Firmamos el release con nuestra llave (si keystore.properties existe).
+            if (archivoFirma.exists()) signingConfig = signingConfigs.getByName("release")
         }
     }
     compileOptions {
