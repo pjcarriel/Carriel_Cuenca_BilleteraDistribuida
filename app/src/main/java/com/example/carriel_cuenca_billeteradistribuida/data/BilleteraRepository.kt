@@ -43,6 +43,9 @@ import kotlinx.coroutines.withContext
 // Tiempo máximo de espera entre reintentos de conexión del WebSocket (10 segundos).
 private const val ESPERA_MAXIMA_MS = 10_000L
 
+// Resultado de una operación del panel de pruebas: si salió bien y en qué hilo corrió.
+data class ResultadoHilo(val exito: Boolean, val hilo: String)
+
 // REPOSITORIO DE LA BILLETERA de UNA cuenta (la del usuario que inició sesión).
 // Combina Room (historial y último saldo), Retrofit (operaciones) y WebSocket (tiempo real).
 // REGLA DE ESTE ARCHIVO: todo trabajo de disco/red se hace en Dispatchers.IO.
@@ -151,6 +154,24 @@ class BilleteraRepository(
             guardarSaldo(respuesta.saldo)
             respuesta
         }
+    }
+
+    // ---------------------------- PANEL DE PRUEBAS DE CONCURRENCIA ----------------------------
+    // Estas funciones existen SOLO para demostrar en qué hilo corre cada operación.
+    // Devuelven el nombre del hilo donde se ejecutó el trabajo de red o de base de datos.
+
+    // Una petición de red (GET /mi-cuenta) en Dispatchers.IO. Devuelve el hilo IO que la atendió.
+    suspend fun consultaServidorEnHilo(): ResultadoHilo = withContext(Dispatchers.IO) {
+        val hiloIO = Thread.currentThread().name                 // Debe ser DefaultDispatcher-worker-N.
+        val ok = runCatching { api.miCuenta() }.isSuccess        // La E/S real de OkHttp ocurre aquí.
+        ResultadoHilo(ok, hiloIO)
+    }
+
+    // Una lectura de Room en Dispatchers.IO. Devuelve el hilo IO que la atendió.
+    suspend fun lecturaRoomEnHilo(): ResultadoHilo = withContext(Dispatchers.IO) {
+        val hiloIO = Thread.currentThread().name
+        runCatching { movimientoDao.contar(cuenta) }
+        ResultadoHilo(true, hiloIO)
     }
 
     // ---------------------------- TIEMPO REAL (WebSocket) ----------------------------

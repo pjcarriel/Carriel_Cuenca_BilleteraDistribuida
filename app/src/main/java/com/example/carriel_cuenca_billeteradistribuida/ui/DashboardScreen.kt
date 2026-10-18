@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout        // Ícono de cerrar sesión.
+import androidx.compose.material.icons.filled.Science                    // Ícono del panel de pruebas.
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong   // Versión que se voltea en idiomas de derecha a izquierda.
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -47,6 +48,7 @@ fun DashboardScreen(
     procesando: Boolean,                         // true = hay una operación en curso (botones desactivados).
     onAccionClick: (TipoOperacion) -> Unit,      // Lambda: avisa qué botón se tocó.
     onCerrarSesion: () -> Unit,                  // Botón de cerrar sesión.
+    onAbrirPruebas: () -> Unit,                  // Botón del panel de pruebas de concurrencia.
     modifier: Modifier = Modifier
 ) {
     // Una sola LazyColumn para toda la pantalla: todo se desplaza junto.
@@ -62,6 +64,9 @@ fun DashboardScreen(
                     // substringBefore(" "): solo el primer nombre ("Pamela Carriel" -> "Pamela").
                     Text("Hola, ${nombre.substringBefore(" ")}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text("@$usuario", color = Color.Gray)
+                }
+                IconButton(onClick = onAbrirPruebas) {
+                    Icon(Icons.Filled.Science, contentDescription = "Pruebas de concurrencia")
                 }
                 IconButton(onClick = onCerrarSesion) {
                     Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Cerrar sesión")
@@ -116,7 +121,8 @@ fun DashboardPreview() {
             movimientos = DatosDePrueba.movimientos,
             procesando = false,
             onAccionClick = { },
-            onCerrarSesion = { }
+            onCerrarSesion = { },
+            onAbrirPruebas = { }
         )
     }
 }

@@ -23,4 +23,8 @@ interface MovimientoDao {
     // Historial de UNA cuenta, el más reciente primero. Flow: se vuelve a emitir con cada cambio.
     @Query("SELECT * FROM movimientos WHERE cuenta = :cuenta ORDER BY fechaHora DESC")
     fun observarTodos(cuenta: String): Flow<List<MovimientoEntity>>
+
+    // Cuenta cuántos movimientos tiene una cuenta. Lectura única (suspend), usada en el panel de pruebas.
+    @Query("SELECT COUNT(*) FROM movimientos WHERE cuenta = :cuenta")
+    suspend fun contar(cuenta: String): Int
 }

@@ -14,9 +14,11 @@ import com.example.carriel_cuenca_billeteradistribuida.data.remote.RetrofitClien
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.WebSocketCliente
 import com.example.carriel_cuenca_billeteradistribuida.model.EstadoConexion
 import com.example.carriel_cuenca_billeteradistribuida.model.EstadoOperacion
+import com.example.carriel_cuenca_billeteradistribuida.model.EstadoPruebas
 import com.example.carriel_cuenca_billeteradistribuida.model.Factura
 import com.example.carriel_cuenca_billeteradistribuida.model.Movimiento
 import com.example.carriel_cuenca_billeteradistribuida.model.Solicitud
+import com.example.carriel_cuenca_billeteradistribuida.model.TipoPrueba
 import com.example.carriel_cuenca_billeteradistribuida.util.logHilo
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,7 +26,10 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
 
 // VIEWMODEL DE LA BILLETERA de UNA cuenta (la de la sesión activa).
 // "onSesionInvalida": lambda que avisa al SesionViewModel si el servidor rechaza la sesión (401).
@@ -112,6 +117,56 @@ class BilleteraViewModel(
 
     fun mensajeMostrado() {
         _estado.value = EstadoOperacion.Inactivo
+    }
+
+    // ---------------- PANEL DE PRUEBAS DE CONCURRENCIA ----------------
+    private val _pruebas = MutableStateFlow(EstadoPruebas())
+    val pruebas: StateFlow<EstadoPruebas> = _pruebas.asStateFlow()
+
+    // Lanza N peticiones AL MISMO TIEMPO (red o Room) y registra qué hilo atendió cada una.
+    // Demuestra: red/BD en Dispatchers.IO (varios worker), respuestas de vuelta en main, y
+    // que la UI NO se congela (el reloj de la pantalla sigue corriendo mientras esto trabaja).
+    fun lanzarConcurrentes(n: Int, tipo: TipoPrueba) {
+        if (_pruebas.value.ejecutando) return
+        _pruebas.value = EstadoPruebas(ejecutando = true, total = n)
+        viewModelScope.launch {                                   // Corrutina en el hilo main.
+            val t0 = System.currentTimeMillis()
+            val hilos = ConcurrentHashMap<String, Int>()          // Hilo IO -> nº de peticiones.
+            val completadas = AtomicInteger(0)
+            // Creamos N corrutinas hijas que se ejecutan EN PARALELO.
+            val trabajos = (1..n).map {
+                launch {
+                    // Cada una salta a Dispatchers.IO dentro del Repository (red o Room).
+                    val r = when (tipo) {
+                        TipoPrueba.SERVIDOR -> repositorio.consultaServidorEnHilo()
+                        TipoPrueba.ROOM -> repositorio.lecturaRoomEnHilo()
+                    }
+                    hilos.merge(r.hilo, 1, Int::plus)             // Contamos el hilo IO que la atendió.
+                    val hechas = completadas.incrementAndGet()
+                    // Este bloque corre de vuelta en main: actualizar la UI SIEMPRE en el hilo principal.
+                    _pruebas.value = _pruebas.value.copy(
+                        completadas = hechas,
+                        hilos = hilos.toSortedMap(),
+                        hiloRespuesta = Thread.currentThread().name
+                    )
+                }
+            }
+            trabajos.joinAll()                                    // Esperamos a que terminen todas.
+            _pruebas.value = _pruebas.value.copy(ejecutando = false, tiempoMs = System.currentTimeMillis() - t0)
+            logHilo("Pruebas: $n peticiones ($tipo) atendidas por ${hilos.size} hilos de Dispatchers.IO")
+        }
+    }
+
+    // CONTRASTE (lo que NO se debe hacer): bloquea el hilo main a propósito.
+    // La UI se congela unos segundos; sirve para explicar por qué el trabajo pesado va en IO.
+    // No usa corrutina: se llama directo desde el botón, que corre en main.
+    fun bloquearMainAPosta(segundos: Int) {
+        logHilo("Pruebas: BLOQUEANDO el hilo main ${segundos}s (demostración de un ANR)")
+        Thread.sleep(segundos * 1000L)
+    }
+
+    fun limpiarPruebas() {
+        _pruebas.value = EstadoPruebas()
     }
 
     // 401 = la sesión ya no vale -> volver al login. Cualquier otro error -> mensaje rojo.

@@ -25,6 +25,7 @@ import com.example.carriel_cuenca_billeteradistribuida.data.local.SesionEntity
 import com.example.carriel_cuenca_billeteradistribuida.model.EstadoOperacion
 import com.example.carriel_cuenca_billeteradistribuida.model.TipoOperacion
 import com.example.carriel_cuenca_billeteradistribuida.ui.components.OperacionDialog
+import com.example.carriel_cuenca_billeteradistribuida.ui.pruebas.PruebasConcurrenciaScreen
 import com.example.carriel_cuenca_billeteradistribuida.ui.theme.RojoEgreso
 import com.example.carriel_cuenca_billeteradistribuida.ui.theme.VerdeIngreso
 
@@ -49,6 +50,7 @@ fun BilleteraApp(
     val estado by viewModel.estado.collectAsStateWithLifecycle()
 
     var dialogoAbierto by remember { mutableStateOf<TipoOperacion?>(null) }
+    var mostrarPruebas by remember { mutableStateOf(false) }      // Panel de pruebas de concurrencia.
     val snackbarHostState = remember { SnackbarHostState() }
     var mensajeEsError by remember { mutableStateOf(false) }
 
@@ -79,6 +81,17 @@ fun BilleteraApp(
         }
     }
 
+    // Si el panel de pruebas está abierto, lo mostramos en lugar del dashboard
+    // (el WebSocket y la sesión siguen vivos: no se desmontan).
+    if (mostrarPruebas) {
+        PruebasConcurrenciaScreen(
+            viewModel = viewModel,
+            onVolver = { mostrarPruebas = false },
+            onActividad = onActividad
+        )
+        return
+    }
+
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         snackbarHost = {
@@ -104,6 +117,7 @@ fun BilleteraApp(
                 procesando = procesando,
                 onAccionClick = { tipo -> dialogoAbierto = tipo },
                 onCerrarSesion = onCerrarSesion,
+                onAbrirPruebas = { mostrarPruebas = true },
                 modifier = Modifier.fillMaxSize()
             )
         }
