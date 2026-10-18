@@ -6,6 +6,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -65,20 +68,21 @@ fun BotonAccion(
     Card(
         onClick = onClick,
         enabled = habilitado,                                   // Desactivado = gris y sin responder.
-        modifier = modifier.height(96.dp),
-        shape = RoundedCornerShape(20.dp),
+        modifier = modifier.height(64.dp),                      // Más bajo: ocupa menos pantalla.
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
     ) {
-        Column(
+        // Ícono y texto EN FILA (antes en columna): la tarjeta queda compacta.
+        Row(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+                .fillMaxSize()
+                .padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(icono, contentDescription = texto, modifier = Modifier.size(32.dp))
-            Spacer(Modifier.height(6.dp))
-            Text(texto, fontWeight = FontWeight.SemiBold)
+            Icon(icono, contentDescription = texto, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(texto, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
         }
     }
 }

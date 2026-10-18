@@ -2,6 +2,7 @@
 package com.example.carriel_cuenca_billeteradistribuida.ui
 
 import java.time.Instant                       // Un instante en el tiempo.
+import java.time.LocalDate                      // Una fecha (sin hora).
 import java.time.ZoneId                        // Zona horaria.
 import java.time.format.DateTimeFormatter      // Formato de fecha.
 import java.util.Locale                        // Configuración regional (separadores de miles).
@@ -20,3 +21,16 @@ fun formatearFecha(milisegundos: Long): String =
     Instant.ofEpochMilli(milisegundos)          // Milisegundos -> instante en el tiempo.
         .atZone(ZoneId.systemDefault())         // Instante -> fecha/hora local del teléfono.
         .format(formatoFecha)                   // Fecha/hora -> texto.
+
+// El día (fecha sin hora) de unos milisegundos, en la zona del teléfono. Sirve para agrupar el historial.
+fun diaDe(milisegundos: Long): LocalDate =
+    Instant.ofEpochMilli(milisegundos).atZone(ZoneId.systemDefault()).toLocalDate()
+
+private val formatoDia = DateTimeFormatter.ofPattern("dd/MM/yyyy")
+
+// Etiqueta amigable de un día: "Hoy", "Ayer" o la fecha. Se muestra en el filtro del historial.
+fun etiquetaDia(dia: LocalDate): String = when (dia) {
+    LocalDate.now() -> "Hoy"
+    LocalDate.now().minusDays(1) -> "Ayer"
+    else -> dia.format(formatoDia)
+}
