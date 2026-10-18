@@ -116,18 +116,23 @@ fun LoginScreen(
 
         // Configurar la dirección del servidor (necesario en un teléfono real).
         var mostrarConfig by remember { mutableStateOf(false) }
+        // "hostUi" es estado de Compose: al guardar, el texto de abajo se actualiza al instante.
+        var hostUi by remember { mutableStateOf(ConfigServidor.host()) }
         TextButton(onClick = { mostrarConfig = true }) {
             Icon(Icons.Filled.Settings, contentDescription = null, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(4.dp))
-            Text("Servidor: ${ConfigServidor.host()}", fontSize = 12.sp)
+            Text("Servidor: $hostUi", fontSize = 12.sp)
         }
-        if (mostrarConfig) ConfigServidorDialog(onCerrar = { mostrarConfig = false })
+        if (mostrarConfig) ConfigServidorDialog(
+            onGuardado = { hostUi = it },
+            onCerrar = { mostrarConfig = false }
+        )
     }
 }
 
 // Diálogo para cambiar la IP/host del servidor (emulador: 10.0.2.2; teléfono real: IP de la PC).
 @Composable
-private fun ConfigServidorDialog(onCerrar: () -> Unit) {
+private fun ConfigServidorDialog(onGuardado: (String) -> Unit, onCerrar: () -> Unit) {
     val contexto = LocalContext.current
     var host by remember { mutableStateOf(ConfigServidor.host()) }
     AlertDialog(
@@ -150,7 +155,7 @@ private fun ConfigServidorDialog(onCerrar: () -> Unit) {
             }
         },
         confirmButton = {
-            Button(onClick = { ConfigServidor.guardarHost(contexto, host); onCerrar() }) { Text("Guardar") }
+            Button(onClick = { ConfigServidor.guardarHost(contexto, host); onGuardado(ConfigServidor.host()); onCerrar() }) { Text("Guardar") }
         },
         dismissButton = { TextButton(onClick = onCerrar) { Text("Cancelar") } }
     )

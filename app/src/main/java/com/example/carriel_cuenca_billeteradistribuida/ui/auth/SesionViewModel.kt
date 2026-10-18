@@ -197,7 +197,7 @@ class SesionViewModel(private val repositorio: SesionRepository) : ViewModel() {
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val app = checkNotNull(this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY])
-                SesionViewModel(SesionRepository(RetrofitClient.api, BilleteraDatabase.obtener(app).sesionDao()))
+                SesionViewModel(SesionRepository(BilleteraDatabase.obtener(app).sesionDao()))
             }
         }
     }

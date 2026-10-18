@@ -221,7 +221,6 @@ class BilleteraViewModel(
                 val repositorio = BilleteraRepository(
                     movimientoDao = db.movimientoDao(),
                     cuentaDao = db.cuentaDao(),
-                    api = RetrofitClient.api,
                     webSocket = WebSocketCliente(RetrofitClient.clienteHttp),
                     cuenta = cuenta
                 )

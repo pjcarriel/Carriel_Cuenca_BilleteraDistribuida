@@ -4,6 +4,7 @@ package com.example.carriel_cuenca_billeteradistribuida.data
 import com.example.carriel_cuenca_billeteradistribuida.data.local.SesionDao
 import com.example.carriel_cuenca_billeteradistribuida.data.local.SesionEntity
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.BilleteraApi
+import com.example.carriel_cuenca_billeteradistribuida.data.remote.RetrofitClient
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.ProveedorToken
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.LoginRequest
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.RegistroRequest
@@ -15,9 +16,11 @@ import kotlinx.coroutines.withContext
 // REPOSITORIO DE SESIÓN: login, registro, logout y la sesión guardada en Room.
 // Igual que el otro repositorio: TODO acceso a red o disco ocurre en Dispatchers.IO.
 class SesionRepository(
-    private val api: BilleteraApi,
     private val sesionDao: SesionDao
 ) {
+    // Se lee en CADA uso (no se guarda fijo): así, si cambia la dirección del servidor,
+    // la próxima llamada usa la dirección nueva. (Antes se capturaba una sola vez y quedaba en 10.0.2.2.)
+    private val api: BilleteraApi get() = RetrofitClient.api
 
     // Sesión guardada en el teléfono (al abrir la app). Si existe, deja listo el token en memoria.
     suspend fun sesionGuardada(): SesionEntity? = withContext(Dispatchers.IO) {

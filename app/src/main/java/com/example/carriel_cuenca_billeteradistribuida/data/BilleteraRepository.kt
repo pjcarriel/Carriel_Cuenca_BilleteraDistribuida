@@ -10,6 +10,7 @@ import com.example.carriel_cuenca_billeteradistribuida.data.remote.BilleteraApi
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.ConfigServidor
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.EventoSocket
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.ProveedorToken
+import com.example.carriel_cuenca_billeteradistribuida.data.remote.RetrofitClient
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.SesionRechazadaException
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.WebSocketCliente
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.EventoWebSocketDto
@@ -52,10 +53,12 @@ data class ResultadoHilo(val exito: Boolean, val hilo: String)
 class BilleteraRepository(
     private val movimientoDao: MovimientoDao,
     private val cuentaDao: CuentaDao,
-    private val api: BilleteraApi,
     private val webSocket: WebSocketCliente,
     private val cuenta: String                       // Cuenta de la SESIÓN (ej. "1001", "1004"...).
 ) {
+    // Se lee en CADA uso (no se guarda fijo): si cambia la dirección del servidor, la siguiente
+    // llamada usa la nueva. (Antes se capturaba una vez y se quedaba apuntando a 10.0.2.2.)
+    private val api: BilleteraApi get() = RetrofitClient.api
 
     private val gson = Gson()
 
