@@ -28,6 +28,11 @@ internal suspend fun <T> llamarServidor(bloque: suspend () -> T): Resultado<T> =
     } catch (e: IOException) {
         logHilo("Sin conexión con el servidor (${e.javaClass.simpleName})")
         Resultado.Error("Sin conexión con el servidor. Se muestran los últimos datos guardados.")
+    } catch (e: Exception) {
+        // Red de seguridad: respuesta con JSON inesperado, dirección mal escrita, etc.
+        // Nunca dejamos que un fallo así cierre la app.
+        logHilo("Fallo inesperado al hablar con el servidor (${e.javaClass.simpleName}: ${e.message})")
+        Resultado.Error("Respuesta inesperada del servidor. Revisa la dirección del servidor.")
     }
 
 // Lee el JSON de error del servidor ({"codigo":..., "mensaje":...}) para mostrar su mensaje.

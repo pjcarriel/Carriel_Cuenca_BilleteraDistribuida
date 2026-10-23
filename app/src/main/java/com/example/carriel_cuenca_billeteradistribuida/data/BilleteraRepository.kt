@@ -206,6 +206,9 @@ class BilleteraRepository(
                         EventoSocket.Abierto -> {
                             _estadoConexion.value = EstadoConexion.EN_LINEA
                             intentosFallidos = 0
+                            // Al (re)conectar descargamos el historial: así aparecen en Room las
+                            // transferencias que llegaron mientras el túnel estuvo caído (los repetidos se ignoran).
+                            sincronizarHistorial()
                         }
                         is EventoSocket.Mensaje -> procesarMensaje(evento.texto)
                     }

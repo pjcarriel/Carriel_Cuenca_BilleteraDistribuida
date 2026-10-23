@@ -2,6 +2,7 @@
 package com.example.carriel_cuenca_billeteradistribuida.data.remote
 
 import android.content.Context
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull     // Convierte un texto en URL (o null si no es válida).
 
 // Configuración de la conexión con el servidor Ktor.
 // La DIRECCIÓN es configurable porque la misma app corre en dos sitios distintos:
@@ -20,15 +21,30 @@ object ConfigServidor {
     @Volatile
     private var host: String = HOST_DEFECTO
 
-    // Se llama al abrir la app (MainActivity) para recuperar la dirección guardada.
+    // Lee la dirección guardada. Lee un archivo del DISCO: se llama desde Dispatchers.IO
+    // (SesionRepository.sesionGuardada), nunca desde el hilo main.
     fun cargar(context: Context) {
         host = prefs(context).getString(CLAVE_HOST, HOST_DEFECTO) ?: HOST_DEFECTO
     }
 
-    // Guarda una dirección nueva (desde la pantalla de login).
-    fun guardarHost(context: Context, nuevo: String) {
-        host = nuevo.trim().ifEmpty { HOST_DEFECTO }
-        prefs(context).edit().putString(CLAVE_HOST, host).apply()
+    // Limpia lo que escribió el usuario: quita "http://", "ws://", la "/" final y el puerto.
+    // Ej. "http://192.168.1.5:8090/" -> "192.168.1.5". Devuelve null si no es una dirección válida.
+    fun normalizar(texto: String): String? {
+        val limpio = texto.trim()
+            .substringAfter("://")
+            .substringBefore("/")
+            .substringBefore(":")
+            .ifEmpty { HOST_DEFECTO }
+        // Si OkHttp no puede armar una URL con ese host (espacios, símbolos raros...), no es válido.
+        return limpio.takeIf { "http://$it:$PUERTO/".toHttpUrlOrNull() != null }
+    }
+
+    // Guarda una dirección nueva (desde la pantalla de login). Devuelve false si no es válida
+    // (así una dirección mal escrita nunca llega a Retrofit, que lanzaría una excepción).
+    fun guardarHost(context: Context, nuevo: String): Boolean {
+        host = normalizar(nuevo) ?: return false
+        prefs(context).edit().putString(CLAVE_HOST, host).apply()   // apply() escribe en segundo plano.
+        return true
     }
 
     fun host(): String = host

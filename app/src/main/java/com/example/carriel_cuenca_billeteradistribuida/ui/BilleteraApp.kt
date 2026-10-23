@@ -59,6 +59,11 @@ fun BilleteraApp(
         viewModel.iniciarConexion()
         saludo?.let { viewModel.mostrarMensaje(it); onSaludoMostrado() }
     }
+    // Recibir dinero en tiempo real cuenta como ACTIVIDAD: si la app está abierta mostrando el saldo
+    // (ej. en la defensa, mientras se envía desde Postman), la sesión no se cierra por inactividad.
+    LaunchedEffect(Unit) {
+        viewModel.transferenciasRecibidas.collect { onActividad() }
+    }
     // Al SALIR de esta pantalla (cerrar sesión, cambiar de usuario): cerrar el WebSocket.
     DisposableEffect(Unit) {
         onDispose { viewModel.detenerTiempoReal() }

@@ -1,3 +1,4 @@
 <resources>
-    <string name="app_name">Carriel_Cuenca_BilleteraDistribuida</string>
+    <!-- Nombre que aparece debajo del ícono en el teléfono (corto para que no se corte). -->
+    <string name="app_name">Billetera CC</string>
 </resources>

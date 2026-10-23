@@ -135,6 +135,8 @@ fun LoginScreen(
 private fun ConfigServidorDialog(onGuardado: (String) -> Unit, onCerrar: () -> Unit) {
     val contexto = LocalContext.current
     var host by remember { mutableStateOf(ConfigServidor.host()) }
+    // Error si la dirección escrita no es válida (null = sin error).
+    var error by remember { mutableStateOf<String?>(null) }
     AlertDialog(
         onDismissRequest = onCerrar,
         icon = { Icon(Icons.Filled.Settings, contentDescription = null) },
@@ -143,9 +145,11 @@ private fun ConfigServidorDialog(onGuardado: (String) -> Unit, onCerrar: () -> U
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = host,
-                    onValueChange = { host = it.trim() },
+                    onValueChange = { host = it.trim(); error = null },
                     label = { Text("Host o IP") },
                     singleLine = true,
+                    isError = error != null,
+                    supportingText = error?.let { { Text(it) } },
                     prefix = { Text("http://") },
                     suffix = { Text(":${ConfigServidor.PUERTO}") },
                     modifier = Modifier.fillMaxWidth()
@@ -155,7 +159,14 @@ private fun ConfigServidorDialog(onGuardado: (String) -> Unit, onCerrar: () -> U
             }
         },
         confirmButton = {
-            Button(onClick = { ConfigServidor.guardarHost(contexto, host); onGuardado(ConfigServidor.host()); onCerrar() }) { Text("Guardar") }
+            Button(onClick = {
+                if (ConfigServidor.guardarHost(contexto, host)) {
+                    onGuardado(ConfigServidor.host())
+                    onCerrar()
+                } else {
+                    error = "Dirección no válida. Ej. 192.168.1.199"
+                }
+            }) { Text("Guardar") }
         },
         dismissButton = { TextButton(onClick = onCerrar) { Text("Cancelar") } }
     )

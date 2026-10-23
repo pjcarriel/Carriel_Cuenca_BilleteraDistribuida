@@ -68,12 +68,24 @@ class SesionViewModel(private val repositorio: SesionRepository) : ViewModel() {
             val guardada = repositorio.sesionGuardada()
             when {
                 guardada == null -> _estado.value = EstadoSesion.SinSesion
-                // Pasó más tiempo que el permitido desde el último toque (ej. la app estuvo cerrada).
-                System.currentTimeMillis() - guardada.ultimaActividad > limiteMs(guardada) -> {
-                    repositorio.cerrarSesion(avisarServidor = true)
-                    _mensaje.value = AvisoAcceso("Tu sesión se cerró por inactividad", esError = false)
-                    _estado.value = EstadoSesion.SinSesion
-                }
+                // Pasó más tiempo que el permitido desde el último toque (ej. la app estuvo cerrada):
+                // le preguntamos al SERVIDOR, que es quien decide si la sesión sigue valiendo.
+                System.currentTimeMillis() - guardada.ultimaActividad > limiteMs(guardada) ->
+                    when (val r = repositorio.latido()) {
+                        is Resultado.Exito -> activar(guardada, saludo = null)
+                        // SIN CONEXIÓN (no hubo respuesta HTTP): abrimos la billetera con los datos de Room
+                        // (historial y último saldo). Al volver el servidor, si la sesión venció, el WebSocket
+                        // o la primera petición recibirán 401 y la app volverá al login.
+                        // (No hace falta saludo: la billetera ya avisa "Sin conexión... últimos datos guardados".)
+                        is Resultado.Error -> if (r.codigoHttp == null) {
+                            logHilo("SesionViewModel: servidor inalcanzable, abriendo en modo sin conexión")
+                            activar(guardada, saludo = null)
+                        } else {
+                            repositorio.cerrarSesion(avisarServidor = false)
+                            _mensaje.value = AvisoAcceso("Tu sesión se cerró por inactividad", esError = false)
+                            _estado.value = EstadoSesion.SinSesion
+                        }
+                    }
                 else -> activar(guardada, saludo = null)
             }
         }
@@ -197,7 +209,7 @@ class SesionViewModel(private val repositorio: SesionRepository) : ViewModel() {
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val app = checkNotNull(this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY])
-                SesionViewModel(SesionRepository(BilleteraDatabase.obtener(app).sesionDao()))
+                SesionViewModel(SesionRepository(BilleteraDatabase.obtener(app).sesionDao(), app.applicationContext))
             }
         }
     }

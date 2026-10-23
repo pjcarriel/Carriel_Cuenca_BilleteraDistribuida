@@ -22,6 +22,7 @@ import com.example.carriel_cuenca_billeteradistribuida.model.TipoPrueba
 import com.example.carriel_cuenca_billeteradistribuida.util.logHilo
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -46,6 +47,9 @@ class BilleteraViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val estadoConexion: StateFlow<EstadoConexion> = repositorio.estadoConexion
+
+    // Evento "llegó dinero por WebSocket" (la pantalla lo usa para reiniciar el contador de inactividad).
+    val transferenciasRecibidas: SharedFlow<Movimiento> = repositorio.transferenciasRecibidas
 
     private val _estado = MutableStateFlow<EstadoOperacion>(EstadoOperacion.Inactivo)
     val estado: StateFlow<EstadoOperacion> = _estado.asStateFlow()

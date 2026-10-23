@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Billetera Distribuida",
-    "description": "Servidor Ktor + MySQL con login.\n\n1) Ejecuta un LOGIN: el token se guarda solo en la variable {{token}} y las demás peticiones lo usan.\n2) Usuarios de demostración (contraseña demo123): pamela (1001, la app), usuarioa (1002), usuariob (1003).\n3) DEMO en vivo: con la app abierta como pamela, ejecuta 'A3. Login usuarioa' y luego '5. DEMO'.\n4) WebSocket (New > WebSocket): ws://localhost:8090/ws?token=TU_TOKEN\n\nLa sesión se cierra tras 5 minutos sin actividad (401 SESION_EXPIRADA).",
+    "description": "Servidor Ktor + MySQL con login.\n\n1) Ejecuta un LOGIN: el token se guarda solo en la variable {{token}} y las demás peticiones lo usan.\n2) Usuarios de demostración (contraseña demo123): pamela (1001, la app), usuarioa (1002), usuariob (1003).\n3) DEMO en vivo: con la app abierta como pamela, ejecuta 'A3. Login usuarioa' y luego '5. DEMO'.\n4) WebSocket (New > WebSocket): ws://localhost:8090/ws?token=TU_TOKEN\n\nLa sesión se cierra tras 15 minutos sin actividad (401 SESION_EXPIRADA).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {

@@ -12,7 +12,8 @@ import java.sql.Statement
 private val log = LoggerFactory.getLogger("UsuarioRepositorio")
 
 // Minutos SIN ACTIVIDAD tras los cuales la sesión se cierra sola.
-const val MINUTOS_INACTIVIDAD = 5
+// 15 (antes 5): deja margen para explicar en la defensa sin que la sesión de la app o de Postman expire.
+const val MINUTOS_INACTIVIDAD = 15
 
 // Saldo de bienvenida para cada cuenta nueva.
 private val BONO_BIENVENIDA = BigDecimal("100.00")

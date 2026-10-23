@@ -22,6 +22,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -83,6 +84,14 @@ fun DashboardScreen(
     val totalPaginas = maxOf(1, ceil(movimientosDelDia.size / POR_PAGINA.toDouble()).toInt())
     val paginaOk = pagina.coerceIn(0, totalPaginas - 1)
     val visibles = movimientosDelDia.drop(paginaOk * POR_PAGINA).take(POR_PAGINA)
+
+    // Si llega un movimiento NUEVO (ej. una transferencia por WebSocket), volvemos al día más
+    // reciente y a la página 1 para que se vea al instante, aunque se estuviera mirando otro día.
+    val masReciente = movimientos.firstOrNull()?.id
+    LaunchedEffect(masReciente) {
+        diaSel = null
+        pagina = 0
+    }
 
     Column(
         modifier = modifier

@@ -4,7 +4,6 @@ import android.os.Bundle                                   // Datos que Android 
 import androidx.activity.ComponentActivity                 // Clase base de una pantalla que usa Compose.
 import androidx.activity.compose.setContent                // Define qué dibuja la Activity con Compose.
 import androidx.activity.enableEdgeToEdge                  // Dibuja de borde a borde (detrás de las barras).
-import com.example.carriel_cuenca_billeteradistribuida.data.remote.ConfigServidor
 import com.example.carriel_cuenca_billeteradistribuida.ui.AppRaiz
 import com.example.carriel_cuenca_billeteradistribuida.ui.theme.Carriel_Cuenca_BilleteraDistribuidaTheme
 import com.example.carriel_cuenca_billeteradistribuida.util.logHilo
@@ -18,7 +17,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {   // "Bundle?" puede ser null (null safety).
         super.onCreate(savedInstanceState)                 // Primero dejamos que Android haga lo suyo.
         enableEdgeToEdge()                                 // Contenido de borde a borde.
-        ConfigServidor.cargar(applicationContext)          // Recupera la dirección del servidor guardada.
+        // La dirección del servidor guardada NO se lee aquí (sería disco en el hilo main):
+        // la lee SesionRepository en Dispatchers.IO, antes de cualquier llamada de red.
         logHilo("MainActivity: onCreate")                  // Siempre en "main".
         setContent {
             // Aplicamos el tema y mostramos la app.

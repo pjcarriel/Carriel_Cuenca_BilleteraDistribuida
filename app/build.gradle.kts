@@ -35,9 +35,9 @@ android {
         // Android para el que está optimizada la app.
         targetSdk = 37
         // Número interno de versión (sube en cada entrega).
-        versionCode = 1
+        versionCode = 2
         // Versión visible para el usuario.
-        versionName = "1.0"
+        versionName = "1.1"
 
         // Ejecutor de pruebas instrumentadas (plantilla).
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -119,4 +119,9 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
+}
+
+// Nombre del archivo APK generado: "BilleteraCC-v1.1-release.apk" (en vez de "app-release.apk").
+base {
+    archivesName = "BilleteraCC-v1.1"
 }
