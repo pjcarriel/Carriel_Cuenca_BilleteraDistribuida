@@ -102,6 +102,15 @@ data class EventoWebSocket(
     val fecha: Long = System.currentTimeMillis()
 )
 
+// Mensaje por WebSocket SOLO para el laboratorio: cuántos nodos (dispositivos) están conectados.
+// Ej. {"tipo":"CONEXIONES","total":3,"cuentas":["1001","1002","9999"]}
+@Serializable
+data class EventoConexiones(
+    val tipo: String = "CONEXIONES",
+    val total: Int,                 // Dispositivos con el WebSocket abierto (una cuenta puede tener varios).
+    val cuentas: List<String>       // Cuentas distintas conectadas, ordenadas.
+)
+
 // Cuerpo JSON de una respuesta de ERROR.
 @Serializable
 data class ErrorRespuesta(val codigo: String, val mensaje: String)

@@ -18,6 +18,7 @@ import io.ktor.websocket.readText
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
+import java.io.IOException                             // Error de red (ej. "Ping timeout").
 
 private val log = LoggerFactory.getLogger("Rutas")
 
@@ -144,6 +145,10 @@ fun Application.configurarRutas() {
                 for (frame in incoming) {
                     if (frame is Frame.Text) log.info("Mensaje de $cuenta: ${frame.readText()}")
                 }
+            } catch (e: IOException) {
+                // "Ping timeout": el celular dejó de responder al latido (perdió internet de golpe).
+                // No es un error del servidor: es justo como detectamos a un nodo caído.
+                log.info("WebSocket de la cuenta $cuenta sin respuesta al latido (${e.message}): se da por desconectado")
             } finally {
                 NotificadorWebSocket.quitar(cuenta, this)
             }

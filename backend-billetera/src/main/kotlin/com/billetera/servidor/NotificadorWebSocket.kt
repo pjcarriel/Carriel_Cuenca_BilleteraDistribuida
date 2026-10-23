@@ -3,12 +3,20 @@ package com.billetera.servidor
 
 import io.ktor.websocket.Frame                         // Un mensaje del WebSocket.
 import io.ktor.websocket.WebSocketSession              // Una conexión WebSocket abierta.
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString            // Convierte un objeto en texto JSON.
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
 import java.util.concurrent.ConcurrentHashMap          // Mapa seguro para usar desde VARIOS hilos a la vez.
 
 private val log = LoggerFactory.getLogger("NotificadorWebSocket")
+
+// Cuenta del usuario "laboratorio": es la ÚNICA que recibe la lista de nodos conectados.
+const val CUENTA_LABORATORIO = "9999"
 
 // Lleva la cuenta de QUÉ celulares están conectados y les envía notificaciones.
 // Es el corazón del "tiempo real": cuando llega una transferencia por REST,
@@ -23,33 +31,66 @@ object NotificadorWebSocket {
     // Conversor JSON; encodeDefaults = incluir también los campos con valor por defecto (ej. fecha).
     private val json = Json { encodeDefaults = true }
 
+    // ---------- NODOS CONECTADOS (para el panel del laboratorio) ----------
+    // Foto actual de quién está conectado. StateFlow se queda solo con el ÚLTIMO valor:
+    // si muchos se conectan a la vez, el laboratorio recibe directo la foto más reciente
+    // (nunca una vieja que llegue después de una nueva).
+    private val conexiones = MutableStateFlow(EventoConexiones(total = 0, cuentas = emptyList()))
+
+    // Ámbito propio para enviar los avisos sin frenar a quien se conecta o desconecta.
+    // SupervisorJob: si un envío falla, no se cancelan los demás.
+    private val alcance = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    init {
+        // UNA sola corrutina envía los cambios al laboratorio, en orden.
+        alcance.launch {
+            conexiones.collect { foto -> enviarTexto(CUENTA_LABORATORIO, json.encodeToString(foto)) }
+        }
+    }
+
     // Registra una conexión nueva de una cuenta.
     fun registrar(cuenta: String, sesion: WebSocketSession) {
         // computeIfAbsent: si la cuenta no tiene conjunto todavía, lo crea (también seguro entre hilos).
         sesiones.computeIfAbsent(cuenta) { ConcurrentHashMap.newKeySet() }.add(sesion)
         log.info("WebSocket CONECTADO: cuenta $cuenta (conexiones de esa cuenta: ${sesiones[cuenta]?.size})")
+        actualizarConexiones()
     }
 
-    // Quita una conexión cuando el celular se desconecta.
+    // Quita una conexión cuando el celular se desconecta (cierre normal, o sin respuesta al ping).
     fun quitar(cuenta: String, sesion: WebSocketSession) {
         sesiones[cuenta]?.remove(sesion)        // "?." = solo si existe el conjunto (null safety).
         log.info("WebSocket DESCONECTADO: cuenta $cuenta")
+        actualizarConexiones()
+    }
+
+    // Recalcula la foto de nodos conectados (dispositivos y cuentas distintas).
+    private fun actualizarConexiones() {
+        val activas = sesiones.filterValues { it.isNotEmpty() }
+        conexiones.value = EventoConexiones(
+            total = activas.values.sumOf { it.size },
+            cuentas = activas.keys.sorted()
+        )
+        log.info("Nodos conectados: ${conexiones.value.total} (${conexiones.value.cuentas})")
     }
 
     // Envía un evento a TODAS las conexiones abiertas de una cuenta.
     // "suspend": enviar por la red puede tardar; la corrutina espera sin bloquear el hilo.
     suspend fun enviar(cuenta: String, evento: EventoWebSocket) {
-        val conexiones = sesiones[cuenta]
-        if (conexiones.isNullOrEmpty()) {
+        if (sesiones[cuenta].isNullOrEmpty()) {
             log.info("La cuenta $cuenta no está conectada: no se envía notificación")
             return
         }
         val texto = json.encodeToString(evento)             // Objeto -> texto JSON.
-        conexiones.forEach { sesion ->
+        enviarTexto(cuenta, texto)
+        log.info("Notificación ${evento.tipo} enviada a la cuenta $cuenta: $texto")
+    }
+
+    // Envía un texto ya convertido a JSON a todas las conexiones de una cuenta.
+    private suspend fun enviarTexto(cuenta: String, texto: String) {
+        sesiones[cuenta]?.forEach { sesion ->
             // runCatching: si una conexión está rota, se ignora el error y se sigue con las demás.
             runCatching { sesion.send(Frame.Text(texto)) }
                 .onFailure { log.warn("No se pudo enviar a $cuenta: ${it.message}") }
         }
-        log.info("Notificación ${evento.tipo} enviada a la cuenta $cuenta: $texto")
     }
 }

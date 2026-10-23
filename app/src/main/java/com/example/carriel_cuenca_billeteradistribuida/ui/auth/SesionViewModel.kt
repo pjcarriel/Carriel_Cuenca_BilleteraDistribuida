@@ -11,6 +11,7 @@ import com.example.carriel_cuenca_billeteradistribuida.data.Resultado
 import com.example.carriel_cuenca_billeteradistribuida.data.SesionRepository
 import com.example.carriel_cuenca_billeteradistribuida.data.local.BilleteraDatabase
 import com.example.carriel_cuenca_billeteradistribuida.data.local.SesionEntity
+import com.example.carriel_cuenca_billeteradistribuida.data.remote.ConfigServidor
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.RetrofitClient
 import com.example.carriel_cuenca_billeteradistribuida.util.logHilo
 import kotlinx.coroutines.Job
@@ -121,7 +122,14 @@ class SesionViewModel(private val repositorio: SesionRepository) : ViewModel() {
                     else "Hola de nuevo, $nombre"
                     activar(resultado.datos, saludo)
                 }
-                is Resultado.Error -> _mensaje.value = AvisoAcceso(resultado.mensaje, esError = true)
+                is Resultado.Error -> {
+                    // Sin respuesta HTTP = no se llegó al servidor: decimos A QUÉ dirección se intentó,
+                    // así se detecta enseguida una IP mal escrita.
+                    val texto = if (resultado.codigoHttp == null)
+                        "No se pudo conectar con el servidor (${ConfigServidor.host()}). Revisa la dirección y tu conexión."
+                    else resultado.mensaje
+                    _mensaje.value = AvisoAcceso(texto, esError = true)
+                }
             }
             _procesando.value = false
         }

@@ -77,5 +77,13 @@ data class EventoWebSocketDto(
     val fecha: Long
 )
 
+// Mensaje por WEBSOCKET solo para el laboratorio: nodos conectados.
+// {"tipo":"CONEXIONES","total":3,"cuentas":["1001","1002","9999"]}
+data class EventoConexionesDto(
+    val tipo: String,
+    val total: Int,
+    val cuentas: List<String>?
+)
+
 // Cuerpo de las respuestas de ERROR (400, 401, 404, 409).
 data class ErrorRespuestaDto(val codigo: String?, val mensaje: String?)

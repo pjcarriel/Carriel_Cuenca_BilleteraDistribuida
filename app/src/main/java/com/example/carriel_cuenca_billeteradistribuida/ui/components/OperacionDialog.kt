@@ -173,7 +173,7 @@ fun OperacionDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
 
-                // Aviso si el túnel de tiempo real no está abierto (la operación igual va por REST).
+                // Aviso si se perdió la conexión con el diálogo abierto: el botón queda bloqueado.
                 if (estadoConexion != EstadoConexion.EN_LINEA) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -185,7 +185,7 @@ fun OperacionDialog(
                     ) {
                         Icon(Icons.Filled.WifiOff, contentDescription = null, tint = AmbarConectando, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(8.dp))
-                        Text("Sin conexión en tiempo real: la operación se intentará igual por REST.", fontSize = 12.sp)
+                        Text("Sin conexión con el servidor: espera a que vuelva para confirmar.", fontSize = 12.sp)
                     }
                 }
 
@@ -266,7 +266,7 @@ fun OperacionDialog(
             }
         },
         confirmButton = {
-            Button(onClick = { confirmar() }, enabled = !consultando) {
+            Button(onClick = { confirmar() }, enabled = !consultando && estadoConexion == EstadoConexion.EN_LINEA) {
                 Text(if (montoValido != null && montoValido > 0) "$verbo ${formatearMonto(montoValido)}" else verbo)
             }
         },

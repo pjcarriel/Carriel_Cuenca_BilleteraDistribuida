@@ -130,7 +130,8 @@ fun LoginScreen(
     }
 }
 
-// Diálogo para cambiar la IP/host del servidor (emulador: 10.0.2.2; teléfono real: IP de la PC).
+// Diálogo para cambiar la dirección del servidor (emulador: 10.0.2.2; misma wifi: IP de la PC;
+// cualquier red: URL https del túnel de Cloudflare).
 @Composable
 private fun ConfigServidorDialog(onGuardado: (String) -> Unit, onCerrar: () -> Unit) {
     val contexto = LocalContext.current
@@ -146,16 +147,17 @@ private fun ConfigServidorDialog(onGuardado: (String) -> Unit, onCerrar: () -> U
                 OutlinedTextField(
                     value = host,
                     onValueChange = { host = it.trim(); error = null },
-                    label = { Text("Host o IP") },
+                    label = { Text("IP o dirección del servidor") },
                     singleLine = true,
                     isError = error != null,
                     supportingText = error?.let { { Text(it) } },
-                    prefix = { Text("http://") },
-                    suffix = { Text(":${ConfigServidor.PUERTO}") },
+                    // Teclado de direcciones web (muestra "/", ":" y ".com").
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                     modifier = Modifier.fillMaxWidth()
                 )
                 Text("• Emulador: 10.0.2.2", fontSize = 12.sp, color = Color.Gray)
-                Text("• Teléfono real: la IP de la PC en la wifi (ej. 192.168.1.199)", fontSize = 12.sp, color = Color.Gray)
+                Text("• Misma wifi: la IP de la PC (ej. 192.168.1.199); se usa el puerto ${ConfigServidor.PUERTO}", fontSize = 12.sp, color = Color.Gray)
+                Text("• Desde cualquier red: la dirección del túnel (ej. https://algo.trycloudflare.com)", fontSize = 12.sp, color = Color.Gray)
             }
         },
         confirmButton = {
@@ -164,7 +166,7 @@ private fun ConfigServidorDialog(onGuardado: (String) -> Unit, onCerrar: () -> U
                     onGuardado(ConfigServidor.host())
                     onCerrar()
                 } else {
-                    error = "Dirección no válida. Ej. 192.168.1.199"
+                    error = "Dirección no válida. Ej. 192.168.1.199 o https://algo.trycloudflare.com"
                 }
             }) { Text("Guardar") }
         },

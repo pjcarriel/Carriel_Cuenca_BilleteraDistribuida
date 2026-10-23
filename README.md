@@ -95,9 +95,9 @@ Importar `backend-billetera/postman/Billetera.postman_collection.json`. Ejecutar
 ```bash
 cp keystore.properties.example keystore.properties   # pon los datos de tu keystore
 gradlew assembleRelease
-# resultado: app/build/outputs/apk/release/BilleteraCC-v1.1-release.apk
+# resultado: app/build/outputs/apk/release/BilleteraCC-v1.3-release.apk
 ```
-El APK ya compilado está en `entrega/BilleteraCC-v1.1.apk`.
+El APK ya compilado está en `entrega/BilleteraCC-v1.3.apk`.
 
 ## Demostración (resumen)
 1. Encender MySQL y el servidor; abrir la app e iniciar sesión.

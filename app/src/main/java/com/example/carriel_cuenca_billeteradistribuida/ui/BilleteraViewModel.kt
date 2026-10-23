@@ -17,6 +17,7 @@ import com.example.carriel_cuenca_billeteradistribuida.model.EstadoOperacion
 import com.example.carriel_cuenca_billeteradistribuida.model.EstadoPruebas
 import com.example.carriel_cuenca_billeteradistribuida.model.Factura
 import com.example.carriel_cuenca_billeteradistribuida.model.Movimiento
+import com.example.carriel_cuenca_billeteradistribuida.model.NodosConectados
 import com.example.carriel_cuenca_billeteradistribuida.model.Solicitud
 import com.example.carriel_cuenca_billeteradistribuida.model.TipoPrueba
 import com.example.carriel_cuenca_billeteradistribuida.util.logHilo
@@ -47,6 +48,9 @@ class BilleteraViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val estadoConexion: StateFlow<EstadoConexion> = repositorio.estadoConexion
+
+    // Nodos conectados al servidor (solo se llena para el usuario laboratorio).
+    val nodosConectados: StateFlow<NodosConectados?> = repositorio.nodosConectados
 
     // Evento "llegó dinero por WebSocket" (la pantalla lo usa para reiniciar el contador de inactividad).
     val transferenciasRecibidas: SharedFlow<Movimiento> = repositorio.transferenciasRecibidas

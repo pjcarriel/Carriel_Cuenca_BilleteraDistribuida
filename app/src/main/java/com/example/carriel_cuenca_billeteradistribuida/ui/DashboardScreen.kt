@@ -36,6 +36,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.carriel_cuenca_billeteradistribuida.model.EstadoConexion
 import com.example.carriel_cuenca_billeteradistribuida.model.Movimiento
+import com.example.carriel_cuenca_billeteradistribuida.model.NodosConectados
+import com.example.carriel_cuenca_billeteradistribuida.ui.components.AvisoSinConexion
+import com.example.carriel_cuenca_billeteradistribuida.ui.components.TarjetaNodos
 import com.example.carriel_cuenca_billeteradistribuida.model.TipoOperacion
 import com.example.carriel_cuenca_billeteradistribuida.ui.components.FilaMovimiento
 import com.example.carriel_cuenca_billeteradistribuida.ui.components.PanelAcciones
@@ -65,8 +68,13 @@ fun DashboardScreen(
     onCerrarSesion: () -> Unit,
     onAbrirPruebas: () -> Unit,
     esLaboratorio: Boolean,
+    nodosConectados: NodosConectados? = null,     // Solo se muestra al laboratorio.
     modifier: Modifier = Modifier
 ) {
+    // Las operaciones necesitan al servidor: solo se permiten con el túnel EN LÍNEA.
+    // Sin conexión, el saldo y el historial siguen visibles (vienen de Room), pero no se puede operar.
+    val enLinea = estadoConexion == EstadoConexion.EN_LINEA
+
     // Agrupamos los movimientos por DÍA. "remember(movimientos)": solo se recalcula si cambian.
     val porDia = remember(movimientos) { movimientos.groupBy { diaDe(it.fechaHora) } }
     // Lista de días que tienen movimientos, del más reciente al más antiguo.
@@ -112,7 +120,9 @@ fun DashboardScreen(
             IconButton(onClick = onCerrarSesion) { Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Cerrar sesión") }
         }
         TarjetaSaldo(saldo = saldo, cuenta = cuenta, estadoConexion = estadoConexion)
-        PanelAcciones(habilitado = !procesando, onAccionClick = onAccionClick)
+        if (esLaboratorio) TarjetaNodos(nodos = nodosConectados, enLinea = enLinea)
+        PanelAcciones(habilitado = !procesando && enLinea, onAccionClick = onAccionClick)
+        if (!enLinea) AvisoSinConexion(conectando = estadoConexion == EstadoConexion.CONECTANDO)
 
         // Título "Historial" con el FILTRO DE FECHA (flechas para cambiar de día).
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {

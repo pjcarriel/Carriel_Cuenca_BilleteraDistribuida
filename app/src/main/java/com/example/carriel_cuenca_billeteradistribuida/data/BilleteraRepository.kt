@@ -13,6 +13,7 @@ import com.example.carriel_cuenca_billeteradistribuida.data.remote.ProveedorToke
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.RetrofitClient
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.SesionRechazadaException
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.WebSocketCliente
+import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.EventoConexionesDto
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.EventoWebSocketDto
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.MontoRequest
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.OperacionRespuestaDto
@@ -22,6 +23,7 @@ import com.example.carriel_cuenca_billeteradistribuida.model.CATEGORIA_SERVICIO_
 import com.example.carriel_cuenca_billeteradistribuida.model.EstadoConexion
 import com.example.carriel_cuenca_billeteradistribuida.model.Factura
 import com.example.carriel_cuenca_billeteradistribuida.model.Movimiento
+import com.example.carriel_cuenca_billeteradistribuida.model.NodosConectados
 import com.example.carriel_cuenca_billeteradistribuida.model.Solicitud
 import com.example.carriel_cuenca_billeteradistribuida.model.TipoOperacion
 import com.example.carriel_cuenca_billeteradistribuida.util.logHilo
@@ -65,6 +67,10 @@ class BilleteraRepository(
     // Estado del túnel WebSocket (indicador verde/ámbar/rojo).
     private val _estadoConexion = MutableStateFlow(EstadoConexion.DESCONECTADO)
     val estadoConexion: StateFlow<EstadoConexion> = _estadoConexion.asStateFlow()
+
+    // Nodos conectados al servidor (solo llega al laboratorio). null = desconocido (sin túnel abierto).
+    private val _nodosConectados = MutableStateFlow<NodosConectados?>(null)
+    val nodosConectados: StateFlow<NodosConectados?> = _nodosConectados.asStateFlow()
 
     // Evento: llegó una transferencia (para mostrar "Recibiste $...").
     private val _transferenciasRecibidas = MutableSharedFlow<Movimiento>(extraBufferCapacity = 10)
@@ -224,6 +230,7 @@ class BilleteraRepository(
                 logHilo("Repository: WebSocket caído (${e.javaClass.simpleName})")
             }
             _estadoConexion.value = EstadoConexion.DESCONECTADO
+            _nodosConectados.value = null              // Sin túnel no sabemos quién está conectado.
             intentosFallidos++
             val espera = (1000L shl (intentosFallidos - 1).coerceAtMost(4)).coerceAtMost(ESPERA_MAXIMA_MS)
             logHilo("Repository: reintento de WebSocket en ${espera / 1000} s")
@@ -237,6 +244,12 @@ class BilleteraRepository(
         val evento = runCatching { gson.fromJson(texto, EventoWebSocketDto::class.java) }.getOrNull() ?: return
         when (evento.tipo) {
             "CONECTADO" -> guardarSaldo(evento.saldo)
+            // Solo para el laboratorio: cuántos teléfonos tienen el túnel abierto.
+            "CONEXIONES" -> {
+                val dto = runCatching { gson.fromJson(texto, EventoConexionesDto::class.java) }.getOrNull() ?: return
+                logHilo("Repository: nodos conectados = ${dto.total} ${dto.cuentas}")
+                _nodosConectados.value = NodosConectados(dto.total, dto.cuentas.orEmpty())
+            }
             "TRANSFERENCIA_RECIBIDA" -> {
                 val movimiento = Movimiento(
                     tipo = TipoOperacion.TRANSFERENCIA_RECIBIDA,

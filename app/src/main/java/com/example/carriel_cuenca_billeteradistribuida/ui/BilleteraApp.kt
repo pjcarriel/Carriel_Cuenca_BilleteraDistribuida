@@ -48,6 +48,7 @@ fun BilleteraApp(
     val estadoConexion by viewModel.estadoConexion.collectAsStateWithLifecycle()
     val historial by viewModel.historial.collectAsStateWithLifecycle()
     val estado by viewModel.estado.collectAsStateWithLifecycle()
+    val nodosConectados by viewModel.nodosConectados.collectAsStateWithLifecycle()
 
     var dialogoAbierto by remember { mutableStateOf<TipoOperacion?>(null) }
     var mostrarPruebas by remember { mutableStateOf(false) }      // Panel de pruebas de concurrencia.
@@ -124,6 +125,7 @@ fun BilleteraApp(
                 onCerrarSesion = onCerrarSesion,
                 onAbrirPruebas = { mostrarPruebas = true },
                 esLaboratorio = sesion.usuario == "laboratorio",
+                nodosConectados = nodosConectados,
                 modifier = Modifier.fillMaxSize()
             )
         }

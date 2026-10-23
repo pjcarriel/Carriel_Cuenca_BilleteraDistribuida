@@ -14,6 +14,7 @@ import io.ktor.server.response.respond
 import io.ktor.server.websocket.WebSockets
 import io.ktor.server.websocket.pingPeriod
 import io.ktor.server.websocket.timeout
+import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
 import kotlin.time.Duration.Companion.seconds                      // Permite escribir 15.seconds.
@@ -46,11 +47,13 @@ fun Application.modulo() {
         })
     }
 
-    // WebSockets: cada 15 s el servidor envía un "ping"; si en 30 s no hay respuesta,
-    // la conexión se considera muerta y se cierra (así detectamos celulares desconectados).
+    // WebSockets: LATIDO (heartbeat). Cada 2 s el servidor envía un "ping"; si en 3 s no llega el "pong",
+    // la conexión se considera muerta y se cierra. Así detectamos en unos 3-5 s a un celular que
+    // perdió internet de golpe: ese celular no alcanza a avisar que se va, así que la única forma de
+    // saberlo es notar que dejó de responder. (Un ping pesa unos pocos bytes: no afecta el rendimiento.)
     install(WebSockets) {
-        pingPeriod = 15.seconds
-        timeout = 30.seconds
+        pingPeriod = 2.seconds
+        timeout = 3.seconds
     }
 
     // Manejo CENTRALIZADO de errores: convierte excepciones en respuestas HTTP con JSON.
@@ -66,6 +69,9 @@ fun Application.modulo() {
         }
         // Cualquier otro error inesperado -> 500 (el servidor no se cae).
         exception<Throwable> { call, error ->
+            // Una corrutina CANCELADA no es un error (ej. un WebSocket que se cierra porque el
+            // celular se desconectó): no se registra ni se responde nada.
+            if (error is CancellationException) return@exception
             log.error("Error inesperado", error)
             call.respond(HttpStatusCode.InternalServerError, ErrorRespuesta("ERROR_INTERNO", error.message ?: "Error interno"))
         }

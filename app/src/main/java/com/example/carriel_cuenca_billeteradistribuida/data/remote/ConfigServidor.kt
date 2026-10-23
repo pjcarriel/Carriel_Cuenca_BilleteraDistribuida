@@ -5,9 +5,11 @@ import android.content.Context
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull     // Convierte un texto en URL (o null si no es válida).
 
 // Configuración de la conexión con el servidor Ktor.
-// La DIRECCIÓN es configurable porque la misma app corre en dos sitios distintos:
+// La DIRECCIÓN es configurable porque la misma app corre en sitios distintos:
 //   - En el EMULADOR, el servidor de la PC se alcanza con 10.0.2.2 (valor por defecto).
-//   - En un TELÉFONO REAL, hay que poner la IP de la PC en la red wifi (ej. 192.168.1.199).
+//   - En un TELÉFONO REAL en la misma wifi, con la IP de la PC (ej. 192.168.1.199).
+//   - Desde CUALQUIER RED, con la dirección pública del túnel de Cloudflare
+//     (ej. https://algo.trycloudflare.com), que lleva al servidor de la PC por internet.
 // Se guarda en las preferencias de la app (SharedPreferences), propias de cada dispositivo.
 object ConfigServidor {
 
@@ -17,6 +19,9 @@ object ConfigServidor {
     private const val PREFS = "config_servidor"
     private const val CLAVE_HOST = "host"
 
+    // Dirección guardada, en una de dos formas:
+    //   - CORTA: solo el host ("10.0.2.2", "192.168.1.199") -> http://host:8090 (red local).
+    //   - COMPLETA: con esquema ("https://algo.trycloudflare.com") -> se usa tal cual (internet).
     // @Volatile: lo leen varios hilos (OkHttp) y lo escribe la UI; todos ven el valor actual.
     @Volatile
     private var host: String = HOST_DEFECTO
@@ -27,16 +32,33 @@ object ConfigServidor {
         host = prefs(context).getString(CLAVE_HOST, HOST_DEFECTO) ?: HOST_DEFECTO
     }
 
-    // Limpia lo que escribió el usuario: quita "http://", "ws://", la "/" final y el puerto.
-    // Ej. "http://192.168.1.5:8090/" -> "192.168.1.5". Devuelve null si no es una dirección válida.
+    // Limpia lo que escribió el usuario y lo deja en la forma corta o completa. Ejemplos:
+    //   "192.168.1.5"                      -> "192.168.1.5"
+    //   "http://192.168.1.5:8090/"         -> "192.168.1.5"           (es el puerto de siempre)
+    //   "https://algo.trycloudflare.com/"  -> "https://algo.trycloudflare.com"
+    //   "wss://algo.trycloudflare.com/ws"  -> "https://algo.trycloudflare.com"
+    // Devuelve null si no es una dirección válida.
     fun normalizar(texto: String): String? {
-        val limpio = texto.trim()
-            .substringAfter("://")
-            .substringBefore("/")
-            .substringBefore(":")
-            .ifEmpty { HOST_DEFECTO }
-        // Si OkHttp no puede armar una URL con ese host (espacios, símbolos raros...), no es válido.
-        return limpio.takeIf { "http://$it:$PUERTO/".toHttpUrlOrNull() != null }
+        val limpio = texto.trim().ifEmpty { HOST_DEFECTO }
+        // Si no trae esquema, es la forma corta de siempre (http al puerto 8090).
+        val conEsquema = when {
+            limpio.startsWith("wss://", ignoreCase = true) -> "https://" + limpio.substring(6)
+            limpio.startsWith("ws://", ignoreCase = true) -> "http://" + limpio.substring(5)
+            "://" in limpio -> limpio
+            else -> "http://$limpio"
+        }
+        // OkHttp valida la URL (espacios, símbolos raros, esquema desconocido -> null).
+        val url = conEsquema.toHttpUrlOrNull() ?: return null
+        // ¿El usuario escribió un puerto? (OkHttp pone 80/443 por defecto si no lo escribió.)
+        val puertoEscrito = Regex("^[A-Za-z]+://[^/]*:(\\d+)").find(conEsquema)?.groupValues?.get(1)?.toInt()
+        return when {
+            // HTTPS (túnel): forma completa; el puerto solo si no es el estándar 443.
+            url.scheme == "https" -> if (url.port == 443) "https://${url.host}" else "https://${url.host}:${url.port}"
+            // HTTP con un puerto distinto de 8090: forma completa para respetarlo.
+            puertoEscrito != null && puertoEscrito != PUERTO -> "http://${url.host}:$puertoEscrito"
+            // HTTP sin puerto o con 8090: forma corta de siempre.
+            else -> url.host
+        }
     }
 
     // Guarda una dirección nueva (desde la pantalla de login). Devuelve false si no es válida
@@ -48,8 +70,14 @@ object ConfigServidor {
     }
 
     fun host(): String = host
-    fun urlBase(): String = "http://$host:$PUERTO/"          // Para Retrofit (REST).
-    fun urlWebSocket(): String = "ws://$host:$PUERTO/ws"     // Para el WebSocket.
+
+    // Dirección base para Retrofit (REST).
+    fun urlBase(): String =
+        if ("://" in host) "$host/" else "http://$host:$PUERTO/"
+
+    // Dirección del WebSocket: el mismo servidor con ws:// (o wss:// si es HTTPS, cifrado).
+    fun urlWebSocket(): String =
+        urlBase().replaceFirst("https://", "wss://").replaceFirst("http://", "ws://") + "ws"
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
