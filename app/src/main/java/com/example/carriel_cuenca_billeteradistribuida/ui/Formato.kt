@@ -11,9 +11,12 @@ import java.util.Locale                        // Configuración regional (separ
 
 // Convierte 1250.75 en "$ 1,250.75" (2 decimales y separador de miles).
 fun formatearMonto(monto: Double): String =
+    // "%,.2f": la "," agrega separador de miles y ".2f" deja 2 decimales.
+    // Locale.US asegura "," para miles y "." para decimales, sin importar el idioma del teléfono.
     "$ " + String.format(Locale.US, "%,.2f", monto)
 
 // Formato de fecha: día/mes/año hora:minuto. Ej: "17/10/2026 10:30".
+// "private val": el formateador se crea UNA sola vez y se reutiliza en cada llamada.
 private val formatoFecha = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
 
 // Convierte milisegundos (Long) en un texto de fecha legible, en la zona horaria del teléfono.
@@ -26,9 +29,11 @@ fun formatearFecha(milisegundos: Long): String =
 fun diaDe(milisegundos: Long): LocalDate =
     Instant.ofEpochMilli(milisegundos).atZone(ZoneId.systemDefault()).toLocalDate()
 
+// Formato solo de día (sin hora), para la etiqueta del filtro.
 private val formatoDia = DateTimeFormatter.ofPattern("dd/MM/yyyy")
 
 // Etiqueta amigable de un día: "Hoy", "Ayer" o la fecha. Se muestra en el filtro del historial.
+// "when (dia)" compara el día con cada caso: LocalDate.now() = hoy; minusDays(1) = ayer.
 fun etiquetaDia(dia: LocalDate): String = when (dia) {
     LocalDate.now() -> "Hoy"
     LocalDate.now().minusDays(1) -> "Ayer"

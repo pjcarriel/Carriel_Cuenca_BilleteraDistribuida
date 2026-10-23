@@ -30,6 +30,7 @@ fun EstadoConexionChip(estado: EstadoConexion) {
     // "when" como EXPRESIÓN que devuelve un PAR (color, texto); "val (a, b) =" lo separa.
     // Como EstadoConexion es un enum, Kotlin obliga a cubrir los tres casos.
     val (color, texto) = when (estado) {
+        // "a to b" crea un Pair (par de valores): aquí (color, texto).
         EstadoConexion.EN_LINEA -> VerdeEnLinea to "En línea"
         EstadoConexion.CONECTANDO -> AmbarConectando to "Conectando..."
         EstadoConexion.DESCONECTADO -> RojoDesconectado to "Desconectado"
@@ -40,16 +41,16 @@ fun EstadoConexionChip(estado: EstadoConexion) {
         modifier = Modifier
             .clip(RoundedCornerShape(50))                    // Forma de píldora.
             .background(Color.White.copy(alpha = 0.15f))     // Fondo translúcido.
-            .padding(horizontal = 10.dp, vertical = 4.dp)
+            .padding(horizontal = 10.dp, vertical = 4.dp)       // Margen interno.
     ) {
         // El círculo de color.
         Box(
             modifier = Modifier
-                .size(10.dp)
+                .size(10.dp)                                    // Círculo de 10 dp.
                 .clip(CircleShape)
                 .background(color)
         )
-        Spacer(Modifier.width(6.dp))
+        Spacer(Modifier.width(6.dp))                            // Espacio entre el círculo y el texto.
         Text(texto, color = Color.White, fontSize = 12.sp)
     }
 }

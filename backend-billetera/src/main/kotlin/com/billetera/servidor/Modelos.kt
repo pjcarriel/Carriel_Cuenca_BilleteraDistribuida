@@ -28,6 +28,7 @@ data class SesionRespuesta(
 )
 
 // Quién hizo la petición (lo obtenemos del token; NO viaja en el JSON).
+// No lleva @Serializable porque nunca se convierte a JSON: solo se usa dentro del servidor.
 data class SesionUsuario(val usuarioId: Long, val usuario: String, val nombre: String, val cuenta: String)
 
 // =====================================================================
@@ -118,12 +119,16 @@ data class ErrorRespuesta(val codigo: String, val mensaje: String)
 // =====================================================================
 // ERRORES DE NEGOCIO: excepción que ya sabe su código HTTP
 // =====================================================================
+// Hereda de Exception, así que se puede lanzar con "throw". StatusPages (Application.kt) la atrapa
+// y responde con "estado" y un JSON {"codigo": ..., "mensaje": ...}.
+// "override val message" reemplaza el mensaje estándar de Exception por el nuestro.
 class ErrorNegocio(
     val estado: HttpStatusCode,
     val codigo: String,
     override val message: String
 ) : Exception(message)
 
+// Funciones "fábrica": cada una CREA (no lanza) el error; quien la usa escribe "throw montoInvalido()".
 // --- 400: datos inválidos ---
 fun montoInvalido() = ErrorNegocio(HttpStatusCode.BadRequest, "MONTO_INVALIDO", "El monto debe ser mayor que 0")
 fun datoInvalido(mensaje: String) = ErrorNegocio(HttpStatusCode.BadRequest, "DATO_INVALIDO", mensaje)

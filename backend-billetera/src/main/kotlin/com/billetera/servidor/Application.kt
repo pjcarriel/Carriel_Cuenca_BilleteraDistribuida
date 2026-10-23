@@ -19,6 +19,8 @@ import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
 import kotlin.time.Duration.Companion.seconds                      // Permite escribir 15.seconds.
 
+// LOGGER: escribe mensajes en la consola con hora e hilo (formato definido en logback.xml).
+// "private val" a nivel de archivo = solo se usa dentro de este archivo.
 private val log = LoggerFactory.getLogger("Servidor")
 
 // Puerto donde escucha el servidor. Desde el emulador se llega con http://10.0.2.2:8090
@@ -37,6 +39,8 @@ fun main() {
 }
 
 // Configuración del servidor: "plugins" que agregan capacidades.
+// "Application.modulo()" es una FUNCIÓN DE EXTENSIÓN: se escribe como si fuera un método de Application,
+// por eso dentro podemos llamar directo a install(...) sin escribir "application.install(...)".
 fun Application.modulo() {
 
     // JSON automático: call.receive<T>() lee JSON y call.respond(obj) responde JSON.
@@ -57,6 +61,10 @@ fun Application.modulo() {
     }
 
     // Manejo CENTRALIZADO de errores: convierte excepciones en respuestas HTTP con JSON.
+    // Gracias a esto, las rutas solo hacen "throw" y NO necesitan try/catch: StatusPages atrapa la
+    // excepción y responde. Si una excepción calza con varios bloques, Ktor usa el MÁS ESPECÍFICO
+    // (por eso ErrorNegocio gana sobre Throwable, que es el "atrapa todo").
+    // "call" = la petición en curso (con ella se responde); "error" = la excepción lanzada.
     install(StatusPages) {
         // Errores de negocio (400 monto inválido, 404 cuenta no existe, 409 saldo insuficiente).
         exception<ErrorNegocio> { call, error ->
@@ -71,6 +79,7 @@ fun Application.modulo() {
         exception<Throwable> { call, error ->
             // Una corrutina CANCELADA no es un error (ej. un WebSocket que se cierra porque el
             // celular se desconectó): no se registra ni se responde nada.
+            // "return@exception" = salir SOLO de este bloque (una etiqueta), no de toda la función.
             if (error is CancellationException) return@exception
             log.error("Error inesperado", error)
             call.respond(HttpStatusCode.InternalServerError, ErrorRespuesta("ERROR_INTERNO", error.message ?: "Error interno"))

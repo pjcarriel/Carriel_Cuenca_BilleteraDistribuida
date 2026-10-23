@@ -27,6 +27,9 @@ object Seguridad {
         Base64.getEncoder().encodeToString(ByteArray(16).also { aleatorio.nextBytes(it) })
 
     // Calcula el hash de una contraseña con su sal (PBKDF2 + HMAC-SHA256).
+    // PBEKeySpec junta: la contraseña, la sal (de texto Base64 a bytes), las iteraciones y el tamaño (256 bits).
+    // generateSecret(...).encoded devuelve los bytes del hash; los pasamos a texto Base64 para guardarlos.
+    // MISMA contraseña + MISMA sal => SIEMPRE el mismo hash (por eso se puede verificar después).
     fun hashear(password: String, sal: String): String {
         val especificacion = PBEKeySpec(password.toCharArray(), Base64.getDecoder().decode(sal), ITERACIONES, LONGITUD_BITS)
         val bytes = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(especificacion).encoded
@@ -39,6 +42,7 @@ object Seguridad {
         MessageDigest.isEqual(hashear(password, sal).toByteArray(), hashGuardado.toByteArray())
 
     // TOKEN de sesión: 32 bytes aleatorios en hexadecimal (64 caracteres). Imposible de adivinar.
+    // "%02x" escribe cada byte como 2 dígitos hexadecimales (ej. 10 -> "0a"); joinToString los une.
     fun nuevoToken(): String =
         ByteArray(32).also { aleatorio.nextBytes(it) }.joinToString("") { "%02x".format(it) }
 }

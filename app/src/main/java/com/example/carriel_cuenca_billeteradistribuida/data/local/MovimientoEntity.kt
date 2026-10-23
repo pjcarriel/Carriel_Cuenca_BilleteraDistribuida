@@ -16,6 +16,7 @@ import com.example.carriel_cuenca_billeteradistribuida.model.TipoOperacion
     indices = [Index(value = ["cuenta", "transaccionId"], unique = true)]
 )
 data class MovimientoEntity(
+    // autoGenerate: con id = 0 Room asigna solo el siguiente número (1, 2, 3...) al insertar.
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
     val cuenta: String,                 // Cuenta dueña del movimiento (ej. "1001").
@@ -27,6 +28,8 @@ data class MovimientoEntity(
     val categoria: String?
 )
 
+// FUNCIONES DE EXTENSIÓN: agregan un método a una clase sin modificarla (se usan como entidad.aModelo()).
+// Separar "entidad" (tabla) y "modelo" (app) evita que la pantalla dependa de cómo se guarda en Room.
 // Fila de la tabla -> modelo de la app (la pantalla no necesita saber de qué cuenta es).
 fun MovimientoEntity.aModelo(): Movimiento = Movimiento(
     id = id,

@@ -41,6 +41,11 @@ class BilleteraViewModel(
 ) : ViewModel() {
 
     // ---------------- ESTADO QUE OBSERVA LA PANTALLA ----------------
+    // stateIn convierte el Flow de Room en un StateFlow (con valor actual) que la pantalla puede leer.
+    //  - viewModelScope: ámbito de corrutinas del ViewModel; se CANCELA solo cuando el ViewModel muere.
+    //  - SharingStarted.WhileSubscribed(5_000): lee Room solo mientras alguien observa; si la pantalla
+    //    deja de observar, espera 5 s antes de detenerse (así una rotación de pantalla no reinicia la lectura).
+    //  - El último parámetro es el valor INICIAL mientras llega el primer dato (lista vacía / null).
     val historial: StateFlow<List<Movimiento>> = repositorio.observarHistorial()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -55,12 +60,16 @@ class BilleteraViewModel(
     // Evento "llegó dinero por WebSocket" (la pantalla lo usa para reiniciar el contador de inactividad).
     val transferenciasRecibidas: SharedFlow<Movimiento> = repositorio.transferenciasRecibidas
 
+    // Estado de la última operación (Inactivo, Procesando, Exito, Error). "_estado" solo se cambia aquí.
     private val _estado = MutableStateFlow<EstadoOperacion>(EstadoOperacion.Inactivo)
     val estado: StateFlow<EstadoOperacion> = _estado.asStateFlow()
 
     // Corrutina del WebSocket (null si no está corriendo).
+    // Job = el "control remoto" de una corrutina lanzada: permite preguntar isActive o llamar cancel().
     private var trabajoTiempoReal: Job? = null
 
+    // "init" corre al crear el ViewModel. Cada launch es una corrutina que se queda ESCUCHANDO un
+    // SharedFlow (collect no termina) hasta que el ViewModel se destruye y viewModelScope la cancela.
     init {
         // Aviso de dinero recibido por WebSocket.
         viewModelScope.launch {
@@ -78,6 +87,7 @@ class BilleteraViewModel(
     // ---------------- ACCIONES ----------------
 
     // Sincroniza saldo e historial con el servidor y abre el WebSocket.
+    // viewModelScope.launch inicia la corrutina en el hilo MAIN; el Repository salta a IO por dentro.
     fun iniciarConexion() {
         viewModelScope.launch {
             logHilo("ViewModel: sincronizando saldo e historial con el servidor")
@@ -87,12 +97,15 @@ class BilleteraViewModel(
                 is Resultado.Error -> manejarError(resultado)
             }
         }
+        // "!= true" cubre dos casos: no hay Job (null) o ya terminó. Así nunca abrimos DOS túneles a la vez.
         if (trabajoTiempoReal?.isActive != true) {
             trabajoTiempoReal = viewModelScope.launch { repositorio.mantenerTiempoReal() }
         }
     }
 
     // Cierra el WebSocket (al cerrar sesión o al salir de la pantalla).
+    // cancel() detiene la corrutina: el delay o el collect lanzan CancellationException, awaitClose
+    // (WebSocketCliente) cierra el socket y el bucle de reconexión termina.
     fun detenerTiempoReal() {
         trabajoTiempoReal?.cancel()
         trabajoTiempoReal = null
@@ -112,6 +125,7 @@ class BilleteraViewModel(
 
     // Envía una operación al servidor (al confirmar un diálogo).
     fun ejecutarOperacion(solicitud: Solicitud) {
+        // Si ya hay una operación en curso, se ignora el nuevo toque (evita enviar dos veces la misma).
         if (_estado.value is EstadoOperacion.Procesando) return
         viewModelScope.launch {
             logHilo("ViewModel: enviando ${solicitud.tipo.etiqueta} de ${solicitud.monto}")
@@ -123,6 +137,7 @@ class BilleteraViewModel(
         }
     }
 
+    // La pantalla ya mostró el mensaje: volvemos a Inactivo para no mostrarlo otra vez.
     fun mensajeMostrado() {
         _estado.value = EstadoOperacion.Inactivo
     }
@@ -139,9 +154,13 @@ class BilleteraViewModel(
         _pruebas.value = EstadoPruebas(ejecutando = true, total = n)
         viewModelScope.launch {                                   // Corrutina en el hilo main.
             val t0 = System.currentTimeMillis()
+            // Estructuras SEGURAS ENTRE HILOS: muchas corrutinas las tocan a la vez.
+            // AtomicInteger.incrementAndGet() suma 1 de forma atómica (nunca se pierde una cuenta,
+            // a diferencia de "n++" con un Int normal).
             val hilos = ConcurrentHashMap<String, Int>()          // Hilo IO -> nº de peticiones.
             val completadas = AtomicInteger(0)
             // Creamos N corrutinas hijas que se ejecutan EN PARALELO.
+            // map devuelve la lista de Job de cada launch, para luego esperarlos con joinAll().
             val trabajos = (1..n).map {
                 launch {
                     // Cada una salta a Dispatchers.IO dentro del Repository (red o Room).
@@ -149,6 +168,7 @@ class BilleteraViewModel(
                         TipoPrueba.SERVIDOR -> repositorio.consultaServidorEnHilo()
                         TipoPrueba.ROOM -> repositorio.lecturaRoomEnHilo()
                     }
+                    // merge: si el hilo no está, lo pone con 1; si ya está, le suma 1 (Int::plus).
                     hilos.merge(r.hilo, 1, Int::plus)             // Contamos el hilo IO que la atendió.
                     val hechas = completadas.incrementAndGet()
                     // Este bloque corre de vuelta en main: actualizar la UI SIEMPRE en el hilo principal.
@@ -203,6 +223,7 @@ class BilleteraViewModel(
         Thread.sleep(segundos * 1000L)
     }
 
+    // Deja el panel de pruebas en su estado inicial (sin resultados).
     fun limpiarPruebas() {
         _pruebas.value = EstadoPruebas()
     }
@@ -222,8 +243,11 @@ class BilleteraViewModel(
     // ---------------- FÁBRICA (construcción manual, sin Hilt) ----------------
     companion object {
         // Recibe la CUENTA de la sesión: cada usuario tiene su propio ViewModel y Repository.
+        // Android crea los ViewModel por nosotros (para que sobrevivan a la rotación); la FÁBRICA le
+        // dice CÓMO construir este, que necesita parámetros. Aquí se arma a mano: base de datos -> DAOs -> Repository.
         fun factory(cuenta: String, onSesionInvalida: (String) -> Unit): ViewModelProvider.Factory = viewModelFactory {
             initializer {
+                // APPLICATION_KEY entrega la Application (contexto de toda la app); checkNotNull falla si no está.
                 val app = checkNotNull(this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY])
                 val db = BilleteraDatabase.obtener(app)
                 val repositorio = BilleteraRepository(

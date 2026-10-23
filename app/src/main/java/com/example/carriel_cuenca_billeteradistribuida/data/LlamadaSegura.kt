@@ -16,6 +16,8 @@ private val gson = Gson()
 // Ejecuta un bloque que habla con el servidor y convierte CUALQUIER fallo en Resultado.Error.
 // La comparten SesionRepository y BilleteraRepository (antes estaba dentro de uno solo).
 // "internal" = visible en todo el módulo de la app.
+// "bloque: suspend () -> T" = recibe una LAMBDA suspend que devuelve un T (puede llamar a Retrofit).
+// El ORDEN de los catch importa: se prueba de arriba hacia abajo y Exception (el más general) va al final.
 internal suspend fun <T> llamarServidor(bloque: suspend () -> T): Resultado<T> =
     try {
         Resultado.Exito(bloque())
@@ -36,6 +38,7 @@ internal suspend fun <T> llamarServidor(bloque: suspend () -> T): Resultado<T> =
     }
 
 // Lee el JSON de error del servidor ({"codigo":..., "mensaje":...}) para mostrar su mensaje.
+// Si el cuerpo no trae ese JSON, "?:" usa un mensaje genérico según el código HTTP.
 private fun mensajeDeError(e: HttpException): String {
     val cuerpo = e.response()?.errorBody()?.string()
     val error = runCatching { gson.fromJson(cuerpo, ErrorRespuestaDto::class.java) }.getOrNull()

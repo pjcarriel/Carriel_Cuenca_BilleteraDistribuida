@@ -64,6 +64,9 @@ class BilleteraRepository(
 
     private val gson = Gson()
 
+    // PATRÓN "_privado / público": el MutableStateFlow (con "_") solo se modifica aquí dentro;
+    // hacia afuera se expone como StateFlow de SOLO LECTURA (asStateFlow), así nadie más lo cambia.
+    // StateFlow = siempre tiene un VALOR ACTUAL (un estado) y quien lo observa recibe el último valor.
     // Estado del túnel WebSocket (indicador verde/ámbar/rojo).
     private val _estadoConexion = MutableStateFlow(EstadoConexion.DESCONECTADO)
     val estadoConexion: StateFlow<EstadoConexion> = _estadoConexion.asStateFlow()
@@ -72,6 +75,9 @@ class BilleteraRepository(
     private val _nodosConectados = MutableStateFlow<NodosConectados?>(null)
     val nodosConectados: StateFlow<NodosConectados?> = _nodosConectados.asStateFlow()
 
+    // SharedFlow (a diferencia de StateFlow) NO guarda un valor actual: sirve para EVENTOS que
+    // ocurren una vez (un aviso), que no deben repetirse al volver a observar.
+    // extraBufferCapacity = cuántos eventos puede guardar en espera si nadie los recoge al instante.
     // Evento: llegó una transferencia (para mostrar "Recibiste $...").
     private val _transferenciasRecibidas = MutableSharedFlow<Movimiento>(extraBufferCapacity = 10)
     val transferenciasRecibidas: SharedFlow<Movimiento> = _transferenciasRecibidas.asSharedFlow()
@@ -83,6 +89,10 @@ class BilleteraRepository(
     // ---------------------------- LECTURAS (Flow desde Room) ----------------------------
 
     // Historial de ESTA cuenta (funciona sin internet).
+    // Room devuelve un Flow que EMITE de nuevo cada vez que cambia la tabla (la pantalla se actualiza sola).
+    // map = convierte cada lista de entidades (tabla) en lista de Movimiento (modelo de la app).
+    // flowOn(Dispatchers.IO) = todo lo que está ARRIBA (la lectura y el map) corre en hilos IO;
+    // quien hace collect (el ViewModel) recibe los datos en su propio hilo.
     fun observarHistorial(): Flow<List<Movimiento>> =
         movimientoDao.observarTodos(cuenta)
             .map { entidades ->
@@ -98,6 +108,9 @@ class BilleteraRepository(
     // ---------------------------- SERVIDOR (REST) ----------------------------
 
     // Pide el saldo actual al servidor y lo guarda en Room.
+    // withContext(Dispatchers.IO) = la corrutina se MUDA a un hilo IO para la red y el disco, y al
+    // terminar regresa al hilo de quien la llamó (el principal) con el resultado. La UI nunca se congela.
+    // llamarServidor { } (LlamadaSegura.kt) convierte cualquier fallo en Resultado.Error.
     suspend fun sincronizarSaldo(): Resultado<Double> = withContext(Dispatchers.IO) {
         llamarServidor {
             logHilo("Repository: GET /mi-cuenta (Retrofit)")
@@ -140,6 +153,8 @@ class BilleteraRepository(
     // Ejecuta en el servidor cualquiera de las 4 operaciones y guarda el comprobante en Room.
     suspend fun ejecutar(solicitud: Solicitud): Resultado<OperacionRespuestaDto> = withContext(Dispatchers.IO) {
         llamarServidor {
+            // "when" sobre una sealed class: Kotlin obliga a cubrir los 4 casos (no hace falta "else").
+            // Primero el SERVIDOR (fuente oficial); solo si responde OK se guarda el comprobante en Room.
             val respuesta = when (solicitud) {
                 is Solicitud.Deposito -> {
                     logHilo("Repository: POST /depositar (Retrofit)")
@@ -201,12 +216,15 @@ class BilleteraRepository(
     // Termina cuando se cancela la corrutina o cuando el servidor RECHAZA la sesión.
     suspend fun mantenerTiempoReal() = withContext(Dispatchers.IO) {
         var intentosFallidos = 0
+        // isActive = false cuando el Job que lanzó esta corrutina se CANCELA (ej. al cerrar sesión).
         while (isActive) {
             // Sin token (se cerró la sesión) no tiene sentido conectar.
             val token = ProveedorToken.token ?: break
             _estadoConexion.value = EstadoConexion.CONECTANDO
             logHilo("Repository: abriendo WebSocket de la cuenta $cuenta (intento ${intentosFallidos + 1})")
             try {
+                // collect se queda RECIBIENDO eventos mientras el túnel esté abierto; cuando se cierra
+                // o falla, collect termina (o lanza la excepción) y pasamos al reintento de abajo.
                 webSocket.escuchar(ConfigServidor.urlWebSocket(), token).collect { evento ->
                     when (evento) {
                         EventoSocket.Abierto -> {
@@ -220,6 +238,7 @@ class BilleteraRepository(
                     }
                 }
             } catch (e: CancellationException) {
+                // La cancelación SE RELANZA: si la atrapáramos como un error, la corrutina no se detendría.
                 throw e
             } catch (e: SesionRechazadaException) {
                 // El servidor dice que la sesión ya no vale: avisamos y NO reintentamos.
@@ -232,14 +251,19 @@ class BilleteraRepository(
             _estadoConexion.value = EstadoConexion.DESCONECTADO
             _nodosConectados.value = null              // Sin túnel no sabemos quién está conectado.
             intentosFallidos++
+            // BACKOFF EXPONENCIAL: "1000L shl n" = 1000 * 2^n -> 1 s, 2 s, 4 s, 8 s, 16 s...
+            // coerceAtMost(4) limita n a 4 y coerceAtMost(ESPERA_MAXIMA_MS) deja la espera en máximo 10 s.
+            // Así no saturamos al servidor con reintentos seguidos si está caído.
             val espera = (1000L shl (intentosFallidos - 1).coerceAtMost(4)).coerceAtMost(ESPERA_MAXIMA_MS)
             logHilo("Repository: reintento de WebSocket en ${espera / 1000} s")
+            // delay SUSPENDE la corrutina sin bloquear el hilo (a diferencia de Thread.sleep).
             delay(espera)
         }
         _estadoConexion.value = EstadoConexion.DESCONECTADO
     }
 
     // Interpreta un mensaje JSON del servidor.
+    // Gson convierte el texto JSON en un objeto DTO; si el JSON viene mal, runCatching da null y se ignora.
     private suspend fun procesarMensaje(texto: String) {
         val evento = runCatching { gson.fromJson(texto, EventoWebSocketDto::class.java) }.getOrNull() ?: return
         when (evento.tipo) {
@@ -261,6 +285,7 @@ class BilleteraRepository(
                 logHilo("Repository: guardando transferencia recibida en Room (saldo nuevo ${evento.saldo})")
                 movimientoDao.insertar(movimiento.aEntidad(cuenta))
                 guardarSaldo(evento.saldo)
+                // emit publica el EVENTO para que el ViewModel muestre el aviso "Recibiste $...".
                 _transferenciasRecibidas.emit(movimiento)
             }
             else -> logHilo("Repository: mensaje WebSocket ignorado (${evento.tipo})")

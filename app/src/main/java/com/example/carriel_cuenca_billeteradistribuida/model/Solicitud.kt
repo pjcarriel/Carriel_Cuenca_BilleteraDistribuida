@@ -9,6 +9,7 @@ sealed interface Solicitud {
     val monto: Double            // Todas las solicitudes tienen monto.
     val tipo: TipoOperacion      // Y cada una sabe a qué tipo de movimiento corresponde.
 
+    // "override" = cada clase da su propio valor a las propiedades que exige la interfaz.
     // Depósito: solo el monto.
     data class Deposito(override val monto: Double) : Solicitud {
         override val tipo = TipoOperacion.DEPOSITO

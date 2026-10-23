@@ -8,6 +8,9 @@ import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 
 // Consultas de la tabla "movimientos".
+// DAO = Data Access Object. Solo escribimos la INTERFAZ con anotaciones; Room genera el código real.
+// Las funciones "suspend" Room las ejecuta fuera del hilo principal; las que devuelven Flow
+// no son suspend porque solo crean el Flow (la lectura ocurre al hacer collect).
 @Dao
 interface MovimientoDao {
 

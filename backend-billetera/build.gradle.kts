@@ -11,6 +11,8 @@ plugins {
 // Versiones de las librerías del servidor (en un solo lugar).
 val ktorVersion = "3.1.3"
 
+// "implementation(...)" = librería que el servidor necesita para compilar y ejecutarse.
+// Formato "grupo:nombre:versión"; Gradle la descarga sola desde Maven Central (ver settings.gradle.kts).
 dependencies {
     // --- Ktor: framework de servidor web hecho en Kotlin ---
     implementation("io.ktor:ktor-server-core:$ktorVersion")                  // Núcleo del servidor.

@@ -8,6 +8,7 @@ import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 
 // Consultas de la tabla cuenta_local (el último saldo conocido).
+// @Dao = Room genera la implementación de esta interfaz al compilar (con KSP).
 @Dao
 interface CuentaDao {
 

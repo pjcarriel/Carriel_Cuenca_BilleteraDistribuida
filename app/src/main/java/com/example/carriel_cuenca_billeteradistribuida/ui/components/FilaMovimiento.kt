@@ -42,32 +42,34 @@ import com.example.carriel_cuenca_billeteradistribuida.ui.theme.RojoEgreso
 import com.example.carriel_cuenca_billeteradistribuida.ui.theme.VerdeIngreso
 
 // FILA DEL HISTORIAL: ícono, tipo, (categoría), detalle, fecha/hora y monto en verde o rojo.
+// @Composable = función que DIBUJA interfaz; Compose la vuelve a llamar cuando cambian sus datos.
 @Composable
 fun FilaMovimiento(movimiento: Movimiento) {
     // Color y signo según si el dinero entra o sale.
     val colorMonto = if (movimiento.tipo.esIngreso) VerdeIngreso else RojoEgreso
     val signo = if (movimiento.tipo.esIngreso) "+" else "-"
 
-    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {  // Tarjeta con esquinas redondeadas.
         Row(
+            // Modifier: cadena de ajustes (tamaño, márgenes, fondo...) que se aplican EN ORDEN.
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .fillMaxWidth()                                 // Ocupa todo el ancho.
+                .padding(12.dp),                                // Margen interno de 12 dp.
+            verticalAlignment = Alignment.CenterVertically      // Centra verticalmente lo de la fila.
         ) {
             // Ícono dentro de un círculo del color del monto (transparente).
             Box(
                 modifier = Modifier
                     .size(44.dp)
-                    .clip(CircleShape)
-                    .background(colorMonto.copy(alpha = 0.12f)),
+                    .clip(CircleShape)                          // Recorta en forma de círculo.
+                    .background(colorMonto.copy(alpha = 0.12f)),  // alpha 0.12 = casi transparente.
                 contentAlignment = Alignment.Center
             ) {
                 Icon(iconoDe(movimiento), contentDescription = movimiento.tipo.etiqueta, tint = colorMonto)
             }
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(12.dp))                       // Espacio entre el ícono y los textos.
             // Columna central: tipo, categoría (solo servicios), detalle y fecha.
-            Column(modifier = Modifier.weight(1f)) {
+            Column(modifier = Modifier.weight(1f)) {            // weight(1f): ocupa todo el espacio que sobra.
                 Text(movimiento.tipo.etiqueta, fontWeight = FontWeight.SemiBold)
                 // NULL SAFETY: "?.let" solo dibuja la categoría si NO es null ("Servicio Básico").
                 movimiento.categoria?.let { categoria ->

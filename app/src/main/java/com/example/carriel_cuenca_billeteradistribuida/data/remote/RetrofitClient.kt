@@ -34,6 +34,8 @@ object RetrofitClient {
     @Volatile
     private var cache: Pair<String, BilleteraApi>? = null
 
+    // "get()" = propiedad CALCULADA: este código corre cada vez que alguien lee RetrofitClient.api.
+    // Retrofit.create(...) genera en tiempo de ejecución la implementación de la interfaz BilleteraApi.
     val api: BilleteraApi
         get() {
             val base = ConfigServidor.urlBase()

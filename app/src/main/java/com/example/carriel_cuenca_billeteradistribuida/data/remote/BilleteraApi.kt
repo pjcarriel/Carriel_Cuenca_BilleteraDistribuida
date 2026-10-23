@@ -21,6 +21,8 @@ import retrofit2.http.Query      // Agrega "?nombre=valor" a la URL.
 // INTERFAZ DE RETROFIT: los endpoints del servidor como funciones Kotlin "suspend".
 // El token NO aparece aquí: lo añade AuthInterceptor a todas las peticiones.
 // Si el servidor responde 4xx/5xx, Retrofit lanza HttpException (se atrapa en llamarServidor).
+// Con "suspend", Retrofit hace la petición en los hilos de OkHttp y la corrutina espera sin bloquear.
+// La ruta de cada anotación (ej. "mi-cuenta") se suma a la URL base de RetrofitClient.
 interface BilleteraApi {
 
     // ---------- Autenticación (públicas) ----------

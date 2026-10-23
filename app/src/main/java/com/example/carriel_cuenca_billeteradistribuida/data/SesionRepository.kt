@@ -30,6 +30,7 @@ class SesionRepository(
     suspend fun sesionGuardada(): SesionEntity? = withContext(Dispatchers.IO) {
         ConfigServidor.cargar(contexto)
         logHilo("SesionRepository: servidor configurado en ${ConfigServidor.host()}")
+        // "?.also { }" = solo si hay sesión (no null) copia su token a memoria; devuelve la misma sesión.
         sesionDao.obtener()?.also { ProveedorToken.token = it.token }
     }
 
@@ -78,6 +79,7 @@ class SesionRepository(
     }
 
     // Convierte la respuesta del servidor en la sesión local, la guarda y activa el token.
+    // Desde que ProveedorToken.token tiene valor, AuthInterceptor lo agrega a TODAS las peticiones.
     private suspend fun guardarSesion(dto: SesionDto): SesionEntity {
         val sesion = SesionEntity(
             token = dto.token,

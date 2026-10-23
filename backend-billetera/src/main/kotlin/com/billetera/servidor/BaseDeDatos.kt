@@ -26,7 +26,11 @@ object BaseDeDatos {
         if (!archivo.exists()) {
             error("No existe db.properties. Copia db.properties.example como db.properties y pon tus datos de MySQL.")
         }
+        // "apply { }" = configura el objeto recién creado y lo devuelve.
+        // "use { }" = abre el archivo, lo usa y lo CIERRA solo al terminar (aunque ocurra un error).
         val props = Properties().apply { archivo.inputStream().use { load(it) } }
+        // POOL DE CONEXIONES (HikariCP): abrir una conexión a MySQL es lento, así que el pool deja
+        // varias abiertas y las PRESTA a cada petición; al terminar, la conexión vuelve al pool.
         val config = HikariConfig().apply {
             jdbcUrl = props.getProperty("db.url")
             username = props.getProperty("db.user")
@@ -39,7 +43,10 @@ object BaseDeDatos {
     }
 
     // Crea las tablas que falten y agrega datos de demostración (solo la primera vez).
+    // "CREATE TABLE IF NOT EXISTS" = crea la tabla solo si no existe: se puede reiniciar el servidor sin perder datos.
     private fun crearTablas() {
+        // pool.connection pide prestada una conexión; "use" la devuelve al pool al terminar.
+        // createStatement() sirve para SQL fijo (sin datos del usuario); para datos usamos prepareStatement con "?".
         pool.connection.use { con ->
             con.createStatement().use { st ->
                 // USUARIOS: personas registradas. Guardamos el HASH de la contraseña y su SAL, nunca la contraseña.
@@ -56,6 +63,8 @@ object BaseDeDatos {
                     """.trimIndent()
                 )
                 // CUENTAS: saldo oficial. CHECK impide saldos negativos.
+                // DECIMAL(12,2) = número EXACTO con 2 decimales (el dinero no se guarda como Double, que redondea).
+                // usuario_id UNIQUE = cada usuario tiene como máximo UNA cuenta.
                 st.executeUpdate(
                     """
                     CREATE TABLE IF NOT EXISTS cuentas (
@@ -73,6 +82,8 @@ object BaseDeDatos {
                     log.info("Migración: columna cuentas.usuario_id agregada")
                 }
                 // TRANSACCIONES: historial oficial del servidor.
+                // FOREIGN KEY = cuenta_origen debe existir en "cuentas" (MySQL no deja guardar comprobantes huérfanos).
+                // TIMESTAMP(3) = fecha y hora con milisegundos.
                 st.executeUpdate(
                     """
                     CREATE TABLE IF NOT EXISTS transacciones (
@@ -150,6 +161,9 @@ object BaseDeDatos {
     }
 
     // ¿Existe una columna en una tabla? (consulta el catálogo de MySQL: information_schema).
+    // PreparedStatement: cada "?" se reemplaza de forma SEGURA con setString(posición, valor), empezando en 1.
+    // Así un texto malicioso nunca se ejecuta como SQL (evita la "inyección SQL").
+    // rs.next() avanza a la primera fila (false si no hay); rs.getInt(1) lee la primera columna (el COUNT).
     private fun existeColumna(con: Connection, tabla: String, columna: String): Boolean =
         con.prepareStatement(
             "SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?"
@@ -161,12 +175,14 @@ object BaseDeDatos {
 
     // Crea un usuario de demostración (si no existe) y lo enlaza a una cuenta ya existente.
     private fun crearUsuarioDemo(con: Connection, usuario: String, nombre: String, cuenta: String) {
+        // "SELECT 1" solo pregunta si hay alguna fila; no nos interesan sus datos.
         val existe = con.prepareStatement("SELECT 1 FROM usuarios WHERE usuario = ?").use { ps ->
             ps.setString(1, usuario)
             ps.executeQuery().use { it.next() }
         }
         if (existe) return
         val sal = Seguridad.nuevaSal()
+        // RETURN_GENERATED_KEYS: pide a MySQL que devuelva el id AUTO_INCREMENT que acaba de crear.
         val id = con.prepareStatement(
             "INSERT INTO usuarios (usuario, nombre, password_hash, sal) VALUES (?, ?, ?, ?)",
             Statement.RETURN_GENERATED_KEYS
@@ -187,8 +203,13 @@ object BaseDeDatos {
     }
 
     // Ejecuta un bloque como TRANSACCIÓN SQL: o se guarda TODO, o no se guarda NADA.
+    // "<T>" = GENÉRICO: el bloque puede devolver cualquier tipo (un saldo, una respuesta...) y
+    // transaccion() devuelve ese mismo tipo. "bloque" es una LAMBDA que recibe la conexión.
+    // Los bloqueos "FOR UPDATE" que se hagan dentro duran hasta el commit o el rollback.
     fun <T> transaccion(bloque: (Connection) -> T): T {
         pool.connection.use { con ->
+            // Por defecto JDBC guarda cada sentencia al instante (autoCommit). Lo apagamos para
+            // agrupar varias sentencias y confirmarlas JUNTAS con commit().
             con.autoCommit = false
             try {
                 val resultado = bloque(con)

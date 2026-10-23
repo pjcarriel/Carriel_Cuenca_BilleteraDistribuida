@@ -41,8 +41,11 @@ object NotificadorWebSocket {
     // SupervisorJob: si un envío falla, no se cancelan los demás.
     private val alcance = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
+    // "init" se ejecuta UNA vez, la primera vez que se usa el object.
     init {
         // UNA sola corrutina envía los cambios al laboratorio, en orden.
+        // launch = inicia la corrutina en segundo plano. collect = se queda ESCUCHANDO el StateFlow
+        // para siempre: cada vez que cambia "conexiones.value", se ejecuta el bloque con la foto nueva.
         alcance.launch {
             conexiones.collect { foto -> enviarTexto(CUENTA_LABORATORIO, json.encodeToString(foto)) }
         }
@@ -51,6 +54,7 @@ object NotificadorWebSocket {
     // Registra una conexión nueva de una cuenta.
     fun registrar(cuenta: String, sesion: WebSocketSession) {
         // computeIfAbsent: si la cuenta no tiene conjunto todavía, lo crea (también seguro entre hilos).
+        // ConcurrentHashMap.newKeySet() = un conjunto (Set) que también es seguro entre hilos.
         sesiones.computeIfAbsent(cuenta) { ConcurrentHashMap.newKeySet() }.add(sesion)
         log.info("WebSocket CONECTADO: cuenta $cuenta (conexiones de esa cuenta: ${sesiones[cuenta]?.size})")
         actualizarConexiones()
@@ -65,7 +69,9 @@ object NotificadorWebSocket {
 
     // Recalcula la foto de nodos conectados (dispositivos y cuentas distintas).
     private fun actualizarConexiones() {
+        // filterValues: nos quedamos solo con las cuentas que aún tienen al menos una conexión.
         val activas = sesiones.filterValues { it.isNotEmpty() }
+        // Asignar ".value" PUBLICA la foto nueva: la corrutina del init la recibe y la envía al laboratorio.
         conexiones.value = EventoConexiones(
             total = activas.values.sumOf { it.size },
             cuentas = activas.keys.sorted()
@@ -89,6 +95,7 @@ object NotificadorWebSocket {
     private suspend fun enviarTexto(cuenta: String, texto: String) {
         sesiones[cuenta]?.forEach { sesion ->
             // runCatching: si una conexión está rota, se ignora el error y se sigue con las demás.
+            // Frame.Text = un mensaje de TEXTO del WebSocket (aquí, el JSON). send() es suspend.
             runCatching { sesion.send(Frame.Text(texto)) }
                 .onFailure { log.warn("No se pudo enviar a $cuenta: ${it.message}") }
         }

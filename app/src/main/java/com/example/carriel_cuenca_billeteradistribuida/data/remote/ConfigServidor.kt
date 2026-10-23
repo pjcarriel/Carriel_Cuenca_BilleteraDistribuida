@@ -50,6 +50,7 @@ object ConfigServidor {
         // OkHttp valida la URL (espacios, símbolos raros, esquema desconocido -> null).
         val url = conEsquema.toHttpUrlOrNull() ?: return null
         // ¿El usuario escribió un puerto? (OkHttp pone 80/443 por defecto si no lo escribió.)
+        // La expresión busca ":número" justo después del host; groupValues[1] es ese número (o null si no hay).
         val puertoEscrito = Regex("^[A-Za-z]+://[^/]*:(\\d+)").find(conEsquema)?.groupValues?.get(1)?.toInt()
         return when {
             // HTTPS (túnel): forma completa; el puerto solo si no es el estándar 443.
@@ -79,6 +80,7 @@ object ConfigServidor {
     fun urlWebSocket(): String =
         urlBase().replaceFirst("https://", "wss://").replaceFirst("http://", "ws://") + "ws"
 
+    // SharedPreferences = pequeño archivo "clave=valor" de la app. MODE_PRIVATE: solo esta app lo lee.
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 }

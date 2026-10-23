@@ -4,6 +4,7 @@
 # Luego los archivos build.gradle.kts las usan con "libs.nombre".
 # ============================================================
 
+# [versions]: solo NOMBRES y NÚMEROS de versión; las secciones de abajo los usan con "version.ref".
 [versions]
 # Versión del plugin de Android para Gradle (AGP). La 9.x ya trae Kotlin integrado.
 agp = "9.4.1"
@@ -34,11 +35,19 @@ coroutines = "1.10.1"
 # Íconos extendidos de Material. Ya no están dentro del BOM, por eso llevan versión fija.
 materialIconsExtended = "1.7.8"
 
+# [libraries]: cada librería = group (organización) + name (artefacto) + versión.
+# "version.ref" apunta a un nombre de [versions]. En Gradle se usa como libs.androidx.core.ktx
+# (los guiones "-" del nombre se escriben como puntos).
 [libraries]
+# Extensiones de Kotlin para Android (core-ktx).
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+# JUnit 4: pruebas UNITARIAS (corren en la PC).
 junit = { group = "junit", name = "junit", version.ref = "junit" }
+# Extensión de JUnit para pruebas INSTRUMENTADAS (corren en el teléfono).
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
+# Espresso: pruebas de interfaz en el teléfono (vienen con la plantilla).
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
+# Permite usar setContent { } en la Activity para dibujar con Compose.
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 
 # --- Lifecycle (ViewModel + Compose) ---
@@ -49,13 +58,21 @@ androidx-lifecycle-viewmodel-compose = { group = "androidx.lifecycle", name = "l
 androidx-lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycle" }
 
 # --- Jetpack Compose (sin versión: la pone el BOM) ---
+# El BOM en sí (en app/build.gradle.kts se importa con platform(...)).
 androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
+# Núcleo de la interfaz de Compose.
 androidx-compose-ui = { group = "androidx.compose.ui", name = "ui" }
+# Colores, pinceles y gráficos (Color, Brush...).
 androidx-compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
+# Herramientas de vista previa (@Preview) para Android Studio.
 androidx-compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
+# Anotación @Preview.
 androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
+# Manifest de apoyo para las pruebas de interfaz.
 androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
+# Pruebas de interfaz de Compose con JUnit 4.
 androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
+# Componentes de Material 3 (Card, Button, AlertDialog...).
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 # Íconos como AccountBalanceWallet, Payments, Bolt, etc.
 androidx-compose-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended", version.ref = "materialIconsExtended" }
@@ -82,8 +99,11 @@ okhttp-logging-interceptor = { group = "com.squareup.okhttp3", name = "logging-i
 # Incluye Dispatchers.Main para Android (y trae kotlinx-coroutines-core con Dispatchers.IO).
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "coroutines" }
 
+# [plugins]: plugins de Gradle con su id y versión (se usan con alias(libs.plugins...)).
 [plugins]
+# Plugin de Android para construir la app (usa la versión de AGP).
 android-application = { id = "com.android.application", version.ref = "agp" }
+# Plugin del compilador de Compose (va con la misma versión de Kotlin).
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 # Plugin KSP: procesa las anotaciones de Room (@Entity, @Dao, @Database) y genera código.
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }

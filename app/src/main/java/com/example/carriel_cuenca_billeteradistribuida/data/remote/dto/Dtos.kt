@@ -78,6 +78,8 @@ data class EventoWebSocketDto(
 )
 
 // Mensaje por WEBSOCKET solo para el laboratorio: nodos conectados.
+// "cuentas" es nullable a propósito: Gson no respeta los tipos no-null de Kotlin y, si el campo
+// faltara en el JSON, dejaría null; por eso el Repository usa cuentas.orEmpty().
 // {"tipo":"CONEXIONES","total":3,"cuentas":["1001","1002","9999"]}
 data class EventoConexionesDto(
     val tipo: String,

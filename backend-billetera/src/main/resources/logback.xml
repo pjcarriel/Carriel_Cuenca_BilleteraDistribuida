@@ -4,6 +4,7 @@
     <appender name="CONSOLA" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
             <!-- Formato: hora [HILO] nivel - mensaje.  %thread muestra en qué hilo corre cada cosa. -->
+            <!-- %-5level = nivel (INFO, WARN...) alineado a 5 letras; %n = salto de línea. -->
             <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level - %msg%n</pattern>
         </encoder>
     </appender>

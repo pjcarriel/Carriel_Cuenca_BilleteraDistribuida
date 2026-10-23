@@ -12,6 +12,7 @@ const val TAG_HILOS = "HILOS"
 //   - "main"                      -> hilo principal (UI, Dispatchers.Main).
 //   - "DefaultDispatcher-worker-N" -> hilo de fondo (Dispatchers.IO).
 // Ejemplo de salida:  [main] Click en Depósito
+// Log.d = mensaje de nivel DEBUG (depuración). Función de nivel superior: se usa desde cualquier archivo.
 fun logHilo(mensaje: String) {
     Log.d(TAG_HILOS, "[${Thread.currentThread().name}] $mensaje")
 }

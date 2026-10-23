@@ -1,8 +1,10 @@
+// COLORES DE LA APP: constantes que usan el tema (Theme.kt) y los componentes.
 package com.example.carriel_cuenca_billeteradistribuida.ui.theme
 
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Color                       // Clase Color de Compose.
 
 // Colores que trae la plantilla (los usa Theme.kt).
+// "80" = tonos CLAROS para el modo oscuro; "40" = tonos OSCUROS para el modo claro.
 val Purple80 = Color(0xFFD0BCFF)
 val PurpleGrey80 = Color(0xFFCCC2DC)
 val Pink80 = Color(0xFFEFB8C8)

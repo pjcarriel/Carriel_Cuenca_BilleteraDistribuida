@@ -8,6 +8,8 @@ enum class TipoPrueba {
 }
 
 // Estado del panel de pruebas de concurrencia (lo observa la pantalla de pruebas).
+// Todos los campos tienen valor por defecto: EstadoPruebas() = panel vacío. El ViewModel lo
+// actualiza con copy(...), cambiando solo los campos necesarios.
 data class EstadoPruebas(
     val ejecutando: Boolean = false,          // true mientras corren las N peticiones.
     val total: Int = 0,                       // Cuántas se lanzaron.

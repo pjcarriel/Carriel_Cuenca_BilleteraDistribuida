@@ -16,6 +16,7 @@ private const val API_ANDROID_17 = 37
 // Devuelve true si HAY QUE PEDIR el permiso: el teléfono es Android 17 o superior
 // y el usuario todavía no lo ha concedido. En Android 16 o menor devuelve false
 // (allí la red local no está restringida y el permiso ni siquiera existe).
+// "&&" evalúa en CORTOCIRCUITO: si el Android es menor a 17, ni siquiera consulta el permiso.
 fun necesitaPermisoRedLocal(context: Context): Boolean =
     Build.VERSION.SDK_INT >= API_ANDROID_17 &&
         ContextCompat.checkSelfPermission(context, PERMISO_RED_LOCAL) != PackageManager.PERMISSION_GRANTED

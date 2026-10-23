@@ -13,6 +13,7 @@ sealed class EstadoOperacion {
     data object Inactivo : EstadoOperacion()
 
     // Hay una operación en curso (esperando a Room o, más adelante, al servidor).
+    // (Hoy espera la respuesta del servidor; mientras tanto se ignoran nuevos envíos.)
     data object Procesando : EstadoOperacion()
 
     // La operación terminó bien. "data class" = opción CON datos.

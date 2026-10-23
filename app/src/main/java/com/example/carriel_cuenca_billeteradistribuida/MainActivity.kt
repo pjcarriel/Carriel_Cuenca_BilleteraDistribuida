@@ -1,3 +1,4 @@
+// Paquete raíz de la app: los demás paquetes (data, model, ui, util) cuelgan de este.
 package com.example.carriel_cuenca_billeteradistribuida
 
 import android.os.Bundle                                   // Datos que Android pasa al crear la pantalla.
@@ -20,6 +21,7 @@ class MainActivity : ComponentActivity() {
         // La dirección del servidor guardada NO se lee aquí (sería disco en el hilo main):
         // la lee SesionRepository en Dispatchers.IO, antes de cualquier llamada de red.
         logHilo("MainActivity: onCreate")                  // Siempre en "main".
+        // setContent { } reemplaza el antiguo XML de pantallas: lo de adentro son funciones @Composable.
         setContent {
             // Aplicamos el tema y mostramos la app.
             Carriel_Cuenca_BilleteraDistribuidaTheme {

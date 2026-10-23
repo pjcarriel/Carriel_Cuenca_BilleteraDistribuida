@@ -1,6 +1,7 @@
 // Archivo de compilación de NIVEL SUPERIOR (todo el proyecto).
 // Aquí solo se DECLARAN los plugins; "apply false" significa
 // "no lo apliques aquí, cada módulo (como :app) decide si lo usa".
+// "alias(libs.plugins...)" toma el id y la versión del plugin del catálogo gradle/libs.versions.toml.
 plugins {
     // Plugin de Android para crear una aplicación (APK).
     alias(libs.plugins.android.application) apply false

@@ -16,12 +16,13 @@ object DatosDePrueba {
     private val ahora = System.currentTimeMillis()
 
     // Cuántos milisegundos tiene una hora (60 min * 60 seg * 1000 ms).
-    private const val UNA_HORA = 60 * 60 * 1000L
+    private const val UNA_HORA = 60 * 60 * 1000L                // "L" = número Long; "const" = constante fija.
 
     // Saldo inventado para la tarjeta superior.
     val saldo = 1250.75
 
     // Lista de movimientos inventados. "listOf" crea una lista que no se puede modificar.
+    // Se usan ARGUMENTOS CON NOMBRE (id = ..., tipo = ...) para que se lea qué es cada valor.
     val movimientos = listOf(
         // Un depósito de hace 1 hora.
         Movimiento(id = 1, tipo = TipoOperacion.DEPOSITO, monto = 500.0,

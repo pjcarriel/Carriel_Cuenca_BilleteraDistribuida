@@ -16,6 +16,7 @@ import java.util.concurrent.TimeUnit
 private const val CODIGO_SESION_RECHAZADA = 1008
 
 // Lo que puede pasar en el túnel, ya traducido para el Repository.
+// "sealed" = solo existen estos dos casos; "data object" = un caso sin datos (hay una única instancia).
 sealed interface EventoSocket {
     data object Abierto : EventoSocket
     data class Mensaje(val texto: String) : EventoSocket
@@ -38,7 +39,13 @@ class WebSocketCliente(clienteBase: OkHttpClient) {
     // Abre el túnel con el token en la cabecera y devuelve un Flow con sus eventos.
     // - Termina normal si el servidor cierra; termina con error si la conexión falla;
     // - termina con SesionRechazadaException si el servidor rechaza la sesión (código 1008).
+    // callbackFlow: OkHttp avisa con "callbacks" (onOpen, onMessage...) desde SUS hilos; callbackFlow
+    // los convierte en un Flow que el Repository recorre con collect.
+    //  - trySend(x) = mete x en el Flow (sin suspender; los callbacks no son corrutinas).
+    //  - close() = termina el Flow normalmente; close(error) = lo termina lanzando ese error a quien hace collect.
+    // Es "frío": el túnel se abre cuando alguien hace collect, no al llamar a escuchar().
     fun escuchar(url: String, token: String): Flow<EventoSocket> = callbackFlow {
+        // "object : WebSocketListener()" = objeto ANÓNIMO que hereda de la clase y sobrescribe sus métodos.
         val oyente = object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 logHilo("WebSocket: túnel ABIERTO con $url")
@@ -52,6 +59,7 @@ class WebSocketCliente(clienteBase: OkHttpClient) {
 
             // El servidor pidió cerrar. Si fue por la sesión (1008), avisamos con una excepción especial.
             override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                // Respondemos el cierre con 1000 (= cierre NORMAL), como pide el protocolo WebSocket.
                 webSocket.close(1000, null)
                 if (code == CODIGO_SESION_RECHAZADA) {
                     logHilo("WebSocket: sesión RECHAZADA por el servidor ($reason)")
@@ -64,6 +72,8 @@ class WebSocketCliente(clienteBase: OkHttpClient) {
                 close()                                  // Si ya estaba cerrado, no hace nada.
             }
 
+            // Fallo de red (servidor apagado, sin internet, el ping no tuvo respuesta): cerramos el Flow
+            // CON el error, para que el Repository lo atrape y programe un reintento.
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 logHilo("WebSocket: FALLO ${t.javaClass.simpleName}: ${t.message}")
                 close(t)
@@ -75,6 +85,8 @@ class WebSocketCliente(clienteBase: OkHttpClient) {
         val socket = cliente.newWebSocket(peticion, oyente)
 
         // Al cancelar quien escucha (cerrar sesión, salir de la app), cerramos el túnel.
+        // awaitClose SUSPENDE aquí hasta que el Flow se cierre o se cancele; sin él, callbackFlow
+        // terminaría de inmediato. Su bloque es la "limpieza" que se ejecuta al final.
         awaitClose { socket.close(1000, "Cliente detenido") }
     }
 }

@@ -41,6 +41,8 @@ sealed interface EstadoSesion {
 // VIEWMODEL DE SESIÓN: login, registro, cierre y el TEMPORIZADOR DE INACTIVIDAD.
 class SesionViewModel(private val repositorio: SesionRepository) : ViewModel() {
 
+    // Mismo patrón en todo el ViewModel: MutableStateFlow privado ("_") que solo se cambia aquí,
+    // y StateFlow público de solo lectura que la pantalla observa. Empieza en Cargando.
     private val _estado = MutableStateFlow<EstadoSesion>(EstadoSesion.Cargando)
     val estado: StateFlow<EstadoSesion> = _estado.asStateFlow()
 
@@ -57,6 +59,7 @@ class SesionViewModel(private val repositorio: SesionRepository) : ViewModel() {
     val procesando: StateFlow<Boolean> = _procesando.asStateFlow()
 
     // Momento del último toque del usuario y del último latido enviado al servidor.
+    // Son "var" normales (no StateFlow) porque la pantalla no los muestra; solo los usa el vigilante.
     private var ultimaActividad = 0L
     private var ultimoLatido = 0L
 
@@ -65,6 +68,7 @@ class SesionViewModel(private val repositorio: SesionRepository) : ViewModel() {
 
     init {
         // Al abrir la app: ¿hay una sesión guardada y todavía vigente?
+        // La lectura de Room es suspend: la corrutina espera sin congelar la pantalla (que muestra Cargando).
         viewModelScope.launch {
             val guardada = repositorio.sesionGuardada()
             when {
@@ -94,11 +98,13 @@ class SesionViewModel(private val repositorio: SesionRepository) : ViewModel() {
 
     // ---------------- ACCIONES DE LA PANTALLA DE ACCESO ----------------
 
+    // La llave { ... } al final es la LAMBDA "accion" que recibe acceder() (sintaxis de "trailing lambda").
     fun login(usuario: String, password: String) = acceder { repositorio.login(usuario, password) }
 
     fun registrar(nombre: String, usuario: String, password: String) =
         acceder(esRegistro = true) { repositorio.registrar(nombre, usuario, password) }
 
+    // La pantalla ya mostró el mensaje: lo borramos para no repetirlo.
     fun mensajeVisto() {
         _mensaje.value = null
     }
@@ -117,6 +123,7 @@ class SesionViewModel(private val repositorio: SesionRepository) : ViewModel() {
             _mensaje.value = null
             when (val resultado = accion()) {
                 is Resultado.Exito -> {
+                    // substringBefore(" ") = solo el primer nombre ("Pamela Carriel" -> "Pamela").
                     val nombre = resultado.datos.nombre.substringBefore(" ")
                     val saludo = if (esRegistro) "¡Bienvenido/a, $nombre! Tu cuenta ${resultado.datos.cuenta} recibió $ 100.00 de regalo"
                     else "Hola de nuevo, $nombre"
@@ -131,7 +138,7 @@ class SesionViewModel(private val repositorio: SesionRepository) : ViewModel() {
                     _mensaje.value = AvisoAcceso(texto, esError = true)
                 }
             }
-            _procesando.value = false
+            _procesando.value = false                          // Se vuelve a habilitar el botón.
         }
     }
 
@@ -164,6 +171,7 @@ class SesionViewModel(private val repositorio: SesionRepository) : ViewModel() {
     // El saludo de bienvenida ya se mostró: lo quitamos para no repetirlo (ej. al rotar).
     fun saludoMostrado() {
         val actual = _estado.value
+        // copy() crea una COPIA de la data class cambiando solo "saludo" (al StateFlow se le asigna un valor nuevo).
         if (actual is EstadoSesion.Activa && actual.saludo != null) _estado.value = actual.copy(saludo = null)
     }
 
@@ -178,6 +186,7 @@ class SesionViewModel(private val repositorio: SesionRepository) : ViewModel() {
         ultimoLatido = ahora
         _estado.value = EstadoSesion.Activa(sesion, saludo)
         logHilo("SesionViewModel: sesión ACTIVA de ${sesion.usuario} (cuenta ${sesion.cuenta})")
+        // Cancelamos un vigilante anterior (si lo hubiera) para no tener DOS contando a la vez.
         vigilante?.cancel()
         vigilante = viewModelScope.launch { vigilarInactividad(limiteMs(sesion)) }
     }
@@ -185,6 +194,8 @@ class SesionViewModel(private val repositorio: SesionRepository) : ViewModel() {
     // Cada segundo revisa cuánto falta. En los últimos 30 s muestra el aviso; al llegar a 0 cierra.
     // Es una corrutina en el hilo main: "delay" ESPERA sin bloquear (la pantalla sigue respondiendo).
     private suspend fun vigilarInactividad(limite: Long) {
+        // "while (true)" no es un bucle infinito peligroso: termina con "return" o cuando el Job se
+        // cancela (delay lanza CancellationException y la corrutina se detiene).
         while (true) {
             delay(1_000)
             val restanteMs = limite - (System.currentTimeMillis() - ultimaActividad)
@@ -209,10 +220,12 @@ class SesionViewModel(private val repositorio: SesionRepository) : ViewModel() {
         _avisoSegundos.value = null
         _estado.value = EstadoSesion.SinSesion                 // La UI cambia al login de inmediato.
         _mensaje.value = mensaje
+        // Corrutina APARTE (no la del vigilante, que acabamos de cancelar): avisa al servidor y borra Room.
         viewModelScope.launch { repositorio.cerrarSesion(avisarServidor) }
     }
 
     // ---------------- FÁBRICA ----------------
+    // Le dice a Android cómo construir este ViewModel (necesita el Repository, y este el DAO y el contexto).
     companion object {
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {

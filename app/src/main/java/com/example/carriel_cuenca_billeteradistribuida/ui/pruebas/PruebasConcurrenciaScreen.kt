@@ -64,28 +64,41 @@ import com.example.carriel_cuenca_billeteradistribuida.ui.theme.VerdeIngreso
 
 // PANEL DE PRUEBAS DE CONCURRENCIA (diseño B: medidor arriba + resultado en recuadros).
 // Comparte el MISMO BilleteraViewModel que el dashboard (misma cuenta y repositorio).
+// @OptIn: TopAppBar todavía es "experimental" en Material 3; con esto aceptamos usarla.
+// @Composable = función que DIBUJA interfaz; Compose la vuelve a llamar cuando cambia el estado.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PruebasConcurrenciaScreen(
-    viewModel: BilleteraViewModel,
-    onVolver: () -> Unit,
-    onActividad: () -> Unit
+    viewModel: BilleteraViewModel,          // El mismo ViewModel de la billetera (lanza las pruebas).
+    onVolver: () -> Unit,                   // Flecha "atrás": regresa al dashboard.
+    onActividad: () -> Unit                 // Avisa que el usuario está activo (no cerrar sesión).
 ) {
+    // collectAsStateWithLifecycle: convierte el StateFlow en estado de Compose y deja de
+    // escuchar cuando la app pasa a segundo plano. Al cambiar, la pantalla se redibuja.
     val pruebas by viewModel.pruebas.collectAsStateWithLifecycle()
+    // remember = guarda un valor entre redibujados (sin él, se reiniciaría en cada redibujado).
+    // Los campos de texto se guardan como String; luego se convierten a número.
     var numero by remember { mutableStateOf("50") }
-    val n = numero.toIntOrNull() ?: 0
+    val n = numero.toIntOrNull() ?: 0                       // "?: 0" = si no es número válido, usa 0.
     var destino by remember { mutableStateOf("1001") }
     var montoTransf by remember { mutableStateOf("1") }
+    // Acepta coma o punto decimal ("1,5" o "1.5").
     val monto = montoTransf.replace(',', '.').toDoubleOrNull() ?: 0.0
 
     // RELOJ DE UI: sube en cada fotograma (~60/s) en el hilo main. Si el main se bloquea, se congela.
+    // mutableIntStateOf = estado de tipo Int (más eficiente que mutableStateOf para números).
     var tic by remember { mutableIntStateOf(0) }
+    // LaunchedEffect = corre una corrutina ligada a la pantalla; se cancela sola al salir de ella.
+    // "Unit" como clave = se lanza UNA sola vez.
     LaunchedEffect(Unit) {
         while (true) {
+            // withFrameMillis suspende hasta el SIGUIENTE fotograma (no bloquea el hilo, solo espera).
             androidx.compose.runtime.withFrameMillis { }
             tic++
         }
     }
+    // Animación infinita: el ángulo va de 0 a 360 grados cada 1 s y vuelve a empezar.
+    // La dibuja el hilo main: si el main se congela, el ícono deja de girar.
     val transicion = rememberInfiniteTransition(label = "giro")
     val angulo by transicion.animateFloat(
         initialValue = 0f, targetValue = 360f,
@@ -93,6 +106,7 @@ fun PruebasConcurrenciaScreen(
         label = "angulo"
     )
 
+    // Scaffold = esqueleto de pantalla Material: barra superior + contenido.
     Scaffold(
         topBar = {
             TopAppBar(
@@ -103,6 +117,8 @@ fun PruebasConcurrenciaScreen(
             )
         }
     ) { innerPadding ->
+        // innerPadding = el espacio que ocupa la barra superior (para no dibujar debajo de ella).
+        // verticalScroll: si el contenido no cabe, se puede desplazar con el dedo.
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -140,7 +156,11 @@ fun PruebasConcurrenciaScreen(
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Enviar transferencias", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                     Text("En el teléfono de la cuenta destino se ven llegar en tiempo real.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    // Tres campos en una fila. Modifier.weight = reparte el ancho en proporción
+                    // (la cuenta recibe 1.4 partes; N.º y monto, 1 parte cada uno).
+                    // En cada onValueChange: se filtra lo escrito y se avisa ACTIVIDAD (onActividad).
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        // Cuenta destino: solo dígitos, máximo 10.
                         OutlinedTextField(
                             value = destino,
                             onValueChange = { destino = it.filter { c -> c.isDigit() }.take(10); onActividad() },
@@ -148,6 +168,7 @@ fun PruebasConcurrenciaScreen(
                             singleLine = true,
                             modifier = Modifier.weight(1.4f)
                         )
+                        // Cuántas transferencias lanzar a la vez: solo dígitos, máximo 3 (hasta 999).
                         OutlinedTextField(
                             value = numero,
                             onValueChange = { numero = it.filter { c -> c.isDigit() }.take(3); onActividad() },
@@ -155,6 +176,7 @@ fun PruebasConcurrenciaScreen(
                             singleLine = true,
                             modifier = Modifier.weight(1f)
                         )
+                        // Monto de CADA transferencia (c/u = cada una).
                         OutlinedTextField(
                             value = montoTransf,
                             onValueChange = { montoTransf = it; onActividad() },
@@ -163,6 +185,9 @@ fun PruebasConcurrenciaScreen(
                             modifier = Modifier.weight(1f)
                         )
                     }
+                    // El ViewModel lanza N corrutinas en paralelo (en hilos de fondo IO), cada una una transferencia.
+                    // Solo se habilita con datos válidos (1 a 200, cuenta de 4+ dígitos, monto > 0)
+                    // y si NO hay otra prueba en curso.
                     Button(
                         onClick = { onActividad(); viewModel.lanzarTransferencias(n, destino, monto) },
                         enabled = n in 1..200 && destino.length >= 4 && monto > 0 && !pruebas.ejecutando,
@@ -172,14 +197,20 @@ fun PruebasConcurrenciaScreen(
             }
 
             // ---------- RESULTADO EN RECUADROS ----------
+            // Solo aparece cuando ya se lanzó al menos una prueba (total > 0).
+            // Se actualiza en vivo: cada operación que termina cambia "pruebas" y Compose redibuja.
             if (pruebas.total > 0) {
                 Text("Resultado", fontWeight = FontWeight.Bold, fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // Dos filas de 2 recuadros; weight(1f) en ambos = cada uno ocupa la MITAD del ancho.
+                // Mientras se ejecuta, el tiempo muestra "…" (todavía no se conoce el total).
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Recuadro("${pruebas.completadas}/${pruebas.total}", "completadas", Modifier.weight(1f))
                     Recuadro(if (pruebas.ejecutando) "…" else "${pruebas.tiempoMs}", "ms en total", Modifier.weight(1f))
                 }
                 Spacer(Modifier.height(0.dp))
+                // Cuántos hilos DISTINTOS del pool IO trabajaron, y 0 en el main: la prueba de que
+                // el trabajo pesado (red/base de datos) nunca corrió en el hilo de la interfaz.
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Recuadro("${pruebas.hilos.size}", "hilos de fondo (IO)", Modifier.weight(1f))
                     Recuadro("0", "en el hilo main", Modifier.weight(1f), valorColor = VerdeIngreso)
@@ -188,6 +219,7 @@ fun PruebasConcurrenciaScreen(
                     Text("Fallidas: ${pruebas.fallidas}", color = RojoEgreso, fontWeight = FontWeight.SemiBold)
                 }
                 // Detalle de hilos (plegable), para la evidencia.
+                // verDetalle: true = se ve la lista; el botón alterna entre mostrar y ocultar.
                 var verDetalle by remember { mutableStateOf(false) }
                 OutlinedButton(onClick = { verDetalle = !verDetalle }) {
                     Text(if (verDetalle) "Ocultar detalle de hilos" else "Ver detalle de hilos")
@@ -195,9 +227,12 @@ fun PruebasConcurrenciaScreen(
                 if (verDetalle) {
                     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                         Column(modifier = Modifier.padding(12.dp)) {
+                            // "hilos" es un mapa nombre del hilo -> cuántas operaciones hizo.
+                            // "(hilo, veces)" = desestructuración: separa la clave y el valor de cada entrada.
                             pruebas.hilos.forEach { (hilo, veces) ->
                                 Text("• $hilo → $veces", fontFamily = FontFamily.Monospace, fontSize = 12.sp)
                             }
+                            // Hilo donde se ACTUALIZÓ la interfaz con los resultados (debe ser el main).
                             if (pruebas.hiloRespuesta.isNotEmpty()) {
                                 Text("Respuestas en el hilo: ${pruebas.hiloRespuesta}", fontFamily = FontFamily.Monospace, fontSize = 12.sp)
                             }
@@ -211,6 +246,8 @@ fun PruebasConcurrenciaScreen(
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Avanzado", fontWeight = FontWeight.Bold)
                     Text("Probar solo los hilos, sin mover dinero:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    // SERVIDOR = N consultas de red a la vez; ROOM = N lecturas a la base local a la vez.
+                    // Usan el mismo número N del campo de arriba.
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         OutlinedButton(
                             onClick = { onActividad(); viewModel.lanzarConcurrentes(n, TipoPrueba.SERVIDOR) },
@@ -225,6 +262,8 @@ fun PruebasConcurrenciaScreen(
                     }
                     Text("Contraste: así se ve si el trabajo pesado va en el hilo main (el medidor de arriba se congela 3 s).",
                         fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    // EJEMPLO DE LO QUE NO SE DEBE HACER: duerme el hilo main 3 s a propósito.
+                    // Mientras tanto el reloj y el giro se detienen y la app no responde a toques.
                     OutlinedButton(
                         onClick = { viewModel.bloquearMainAPosta(3) },
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = RojoEgreso),
@@ -237,6 +276,8 @@ fun PruebasConcurrenciaScreen(
 }
 
 // Un recuadro grande con un número y su etiqueta (los 4 resultados).
+// "private" = solo se usa en este archivo. "modifier" lo pasa quien lo llama (ej. weight(1f)).
+// valorColor: color opcional del número; null = el color normal del tema ("?:" elige el de respaldo).
 @Composable
 private fun Recuadro(valor: String, etiqueta: String, modifier: Modifier = Modifier, valorColor: Color? = null) {
     Card(modifier = modifier) {

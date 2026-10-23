@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- MANIFIESTO: la "ficha" de la app para Android: permisos, ícono, nombre, tema y pantallas (Activities). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
@@ -12,6 +13,9 @@
 
     <!-- usesCleartextTraffic="true": permite HTTP sin cifrar (http:// y ws://).
          Lo necesitamos porque nuestro servidor local (10.0.2.2) no usa HTTPS. -->
+    <!-- Otros atributos de <application>: allowBackup, dataExtractionRules y fullBackupContent = reglas de
+         copia de seguridad (archivos en res/xml); icon y roundIcon = ícono; label = nombre (strings.xml);
+         supportsRtl = soporte para idiomas de derecha a izquierda; theme = tema XML base (themes.xml). -->
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -23,12 +27,15 @@
         android:usesCleartextTraffic="true"
         android:theme="@style/Theme.Carriel_Cuenca_BilleteraDistribuida">
         <!-- Pantalla principal de la app (la que se abre al tocar el ícono). -->
+        <!-- exported="true": el lanzador del teléfono (otra app) puede abrirla.
+             windowSoftInputMode="adjustResize": la pantalla se achica al salir el teclado para que no tape los campos. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:label="@string/app_name"
             android:theme="@style/Theme.Carriel_Cuenca_BilleteraDistribuida"
             android:windowSoftInputMode="adjustResize">
+            <!-- intent-filter MAIN + LAUNCHER: esta es la pantalla de INICIO y aparece en el menú de apps. -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 

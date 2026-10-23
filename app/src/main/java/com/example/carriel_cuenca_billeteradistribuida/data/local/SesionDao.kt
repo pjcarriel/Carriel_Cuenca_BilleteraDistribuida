@@ -14,7 +14,7 @@ interface SesionDao {
     @Query("SELECT * FROM sesion WHERE id = 0")
     suspend fun obtener(): SesionEntity?
 
-    // Guarda (o reemplaza) la sesión.
+    // Guarda (o reemplaza) la sesión. Como el id siempre es 0, REPLACE pisa la sesión anterior.
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun guardar(sesion: SesionEntity)
 
@@ -22,7 +22,7 @@ interface SesionDao {
     @Query("UPDATE sesion SET ultimaActividad = :momento WHERE id = 0")
     suspend fun actualizarActividad(momento: Long)
 
-    // Borra la sesión (cerrar sesión).
+    // Borra la sesión (cerrar sesión). Sin WHERE: borra todas las filas (como máximo hay una).
     @Query("DELETE FROM sesion")
     suspend fun borrar()
 }

@@ -27,6 +27,8 @@ private val log = LoggerFactory.getLogger("Rutas")
 // o como parámetro "?token=..." (útil para probar el WebSocket en Postman).
 // Si falta o no es válido, lanza 401 (lo convierte StatusPages en Application.kt).
 private suspend fun ApplicationCall.sesion(): SesionUsuario {
+    // Cadena con "?." y "?:": si la cabecera no existe (null) o queda vacía (takeIf da null), se prueba
+    // el parámetro ?token=; si tampoco existe, "?: throw" lanza el 401.
     val token = request.headers["Authorization"]?.removePrefix("Bearer ")?.trim()?.takeIf { it.isNotEmpty() }
         ?: request.queryParameters["token"]
         ?: throw noAutenticado()
@@ -34,6 +36,12 @@ private suspend fun ApplicationCall.sesion(): SesionUsuario {
 }
 
 // Rutas del servidor.
+// ROUTING de Ktor: cada get("/ruta") o post("/ruta") asocia un MÉTODO HTTP + una RUTA con el bloque
+// que la atiende. Cada bloque corre en una CORRUTINA propia, así que muchas peticiones se atienden
+// a la vez. Dentro del bloque, "call" representa la petición actual y su respuesta:
+//  - call.receive<T>()  -> lee el JSON del cuerpo y lo convierte en un objeto T.
+//  - call.respond(obj)  -> responde con obj convertido a JSON (código 200 si no se indica otro).
+//  - call.parameters["x"] -> lee la parte variable de la ruta, ej. {numero} en "/cuentas/{numero}".
 fun Application.configurarRutas() {
     routing {
 
@@ -96,6 +104,8 @@ fun Application.configurarRutas() {
             val sesion = call.sesion()
             val req = call.receive<TransferenciaRequest>()
             val resultado = CuentaRepositorio.transferir(sesion.cuenta, req.cuentaDestino.trim(), req.monto)
+            // Se notifica DESPUÉS del commit: el receptor solo se entera de dinero que ya está guardado.
+            // Si la transferencia falló (ej. 409), la excepción salta antes y no se notifica nada.
             NotificadorWebSocket.enviar(
                 req.cuentaDestino.trim(),
                 EventoWebSocket(
@@ -126,6 +136,8 @@ fun Application.configurarRutas() {
         }
 
         // WebSocket  ws://localhost:8090/ws   (cabecera Authorization: Bearer <token>, o ?token=...)
+        // Dentro de este bloque, "this" ES la conexión WebSocket (una sesión) de UN celular.
+        // El bloque dura lo mismo que la conexión: al salir de él, Ktor la cierra.
         webSocket("/ws") {
             // Validamos la sesión. Si no es válida, cerramos con código 1008 (POLICY VIOLATION) y el motivo.
             val sesion = try {
@@ -133,7 +145,7 @@ fun Application.configurarRutas() {
             } catch (e: ErrorNegocio) {
                 log.warn("WebSocket rechazado: ${e.codigo}")
                 close(CloseReason(CloseReason.Codes.VIOLATED_POLICY, e.codigo))
-                return@webSocket
+                return@webSocket                            // Sale del bloque webSocket (etiqueta).
             }
             val cuenta = sesion.cuenta
             NotificadorWebSocket.registrar(cuenta, this)
@@ -142,6 +154,8 @@ fun Application.configurarRutas() {
                 val datos = CuentaRepositorio.miCuenta(cuenta)
                 send(Frame.Text(Json.encodeToString(EventoWebSocket(tipo = "CONECTADO", cuenta = cuenta, saldo = datos.saldo))))
                 // Escuchamos hasta que se cierre la conexión (suspendido, sin bloquear).
+                // "incoming" es un CANAL con los mensajes que manda el celular; el for termina cuando
+                // la conexión se cierra. Los ping/pong del latido los maneja Ktor solo (no llegan aquí).
                 for (frame in incoming) {
                     if (frame is Frame.Text) log.info("Mensaje de $cuenta: ${frame.readText()}")
                 }
@@ -150,6 +164,7 @@ fun Application.configurarRutas() {
                 // No es un error del servidor: es justo como detectamos a un nodo caído.
                 log.info("WebSocket de la cuenta $cuenta sin respuesta al latido (${e.message}): se da por desconectado")
             } finally {
+                // "finally" se ejecuta SIEMPRE (cierre normal, error o cancelación): la conexión nunca queda registrada.
                 NotificadorWebSocket.quitar(cuenta, this)
             }
         }

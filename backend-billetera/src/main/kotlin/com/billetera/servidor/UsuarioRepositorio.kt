@@ -18,7 +18,9 @@ const val MINUTOS_INACTIVIDAD = 15
 // Saldo de bienvenida para cada cuenta nueva.
 private val BONO_BIENVENIDA = BigDecimal("100.00")
 
-// Reglas de los datos de registro.
+// Reglas de los datos de registro (EXPRESIONES REGULARES).
+// "^" y "$" = el texto COMPLETO debe cumplir la regla. "(?=.*[A-Za-z])" y "(?=.*\\d)" son "lookaheads":
+// exigen que exista al menos una letra y al menos un dígito en alguna parte. ".{6,50}" = de 6 a 50 caracteres.
 private val PATRON_USUARIO = Regex("^[a-z0-9_]{4,20}$")          // 4 a 20: letras minúsculas, números o "_".
 private val PATRON_PASSWORD = Regex("^(?=.*[A-Za-z])(?=.*\\d).{6,50}$")  // Mínimo 6, con al menos una letra y un número.
 
@@ -37,6 +39,7 @@ object UsuarioRepositorio {
         // El hash se calcula FUERA de la transacción (tarda ~0,1 s y no necesita la base de datos).
         val sal = Seguridad.nuevaSal()
         val hash = Seguridad.hashear(req.password, sal)
+        // Los 4 pasos van en UNA transacción: si alguno falla, no queda un usuario sin cuenta ni una cuenta sin bono.
         try {
             BaseDeDatos.transaccion { con ->
                 // 1. Usuario.
@@ -70,6 +73,8 @@ object UsuarioRepositorio {
     suspend fun login(req: LoginRequest): SesionRespuesta = withContext(Dispatchers.IO) {
         val usuario = req.usuario.trim().lowercase()
         BaseDeDatos.transaccion { con ->
+            // CONSULTA: JOIN une cada usuario con SU cuenta (c.usuario_id = u.id) para obtener en una sola
+            // lectura el hash, la sal, el número de cuenta y el saldo. "u" y "c" son alias (nombres cortos).
             con.prepareStatement(
                 """
                 SELECT u.id, u.nombre, u.password_hash, u.sal, c.numero, c.saldo
@@ -109,6 +114,8 @@ object UsuarioRepositorio {
         // "SesionUsuario?" = null significa "expiró". Lanzamos el error DESPUÉS del commit,
         // para que el DELETE de la sesión vencida sí se guarde (un error dentro haría rollback).
         val sesion: SesionUsuario? = BaseDeDatos.transaccion { con ->
+            // CONSULTA: une sesión -> usuario -> cuenta, y MySQL calcula cuántos segundos pasaron
+            // desde la última actividad (TIMESTAMPDIFF) usando SU propio reloj (NOW(3)), no el del celular.
             con.prepareStatement(
                 """
                 SELECT s.usuario_id, u.usuario, u.nombre, c.numero,

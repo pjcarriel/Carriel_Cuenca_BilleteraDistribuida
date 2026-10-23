@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
+    <!-- Tema XML base de la app (lo pide el AndroidManifest). Solo define la ventana inicial: clara y SIN
+         barra de acción (NoActionBar), porque la interfaz real la dibuja Compose con su tema (ui/theme/Theme.kt). -->
     <style name="Theme.Carriel_Cuenca_BilleteraDistribuida" parent="android:Theme.Material.Light.NoActionBar" />
 </resources>

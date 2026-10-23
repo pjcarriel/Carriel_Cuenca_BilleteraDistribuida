@@ -20,6 +20,9 @@ private const val CATEGORIA_SERVICIO = "Servicio Básico"
 object CuentaRepositorio {
 
     // GET /mi-cuenta
+    // withContext(Dispatchers.IO): la corrutina SALTA a un hilo del grupo IO mientras MySQL responde,
+    // y al terminar vuelve con el resultado. Así los hilos de CIO quedan libres para atender a otros.
+    // Si la cuenta no existe se lanza un ErrorNegocio, que StatusPages convierte en 404.
     suspend fun miCuenta(cuenta: String): CuentaRespuesta = withContext(Dispatchers.IO) {
         BaseDeDatos.transaccion { con ->
             con.prepareStatement("SELECT numero, titular, saldo FROM cuentas WHERE numero = ?").use { ps ->
@@ -41,6 +44,8 @@ object CuentaRepositorio {
     suspend fun depositar(cuenta: String, monto: Double): OperacionRespuesta = withContext(Dispatchers.IO) {
         val cantidad = validarMonto(monto)
         log.info("Depósito de $cantidad en $cuenta")
+        // Leer saldo (bloqueado) + sumar + guardar + registrar comprobante: TODO en una misma transacción.
+        // Si dos depósitos llegan a la vez, el segundo espera al primero y no se pierde ninguno.
         BaseDeDatos.transaccion { con ->
             val nuevoSaldo = bloquearCuenta(con, cuenta) + cantidad
             actualizarSaldo(con, cuenta, nuevoSaldo)
@@ -56,6 +61,8 @@ object CuentaRepositorio {
         log.info("Retiro de $cantidad en $cuenta")
         BaseDeDatos.transaccion { con ->
             val saldoActual = bloquearCuenta(con, cuenta)
+            // Con BigDecimal, "<" y "-" funcionan igual que con números normales (Kotlin usa compareTo y minus).
+            // El "throw" dentro de la transacción provoca ROLLBACK: no se guarda nada.
             if (saldoActual < cantidad) throw saldoInsuficiente(saldoActual.toDouble(), cantidad.toDouble())
             val nuevoSaldo = saldoActual - cantidad
             actualizarSaldo(con, cuenta, nuevoSaldo)
@@ -80,6 +87,9 @@ object CuentaRepositorio {
             log.info("Transferencia de $cantidad: $origen -> $destino")
             BaseDeDatos.transaccion { con ->
                 // EVITAR INTERBLOQUEOS: bloqueamos siempre en el MISMO orden (alfabético).
+                // (Si A->B bloqueara A y luego B, y a la vez B->A bloqueara B y luego A, cada una
+                // esperaría a la otra para siempre: eso es un DEADLOCK.)
+                // associateWith crea un mapa cuenta -> saldo bloqueado, ej. {"1001"=500.00, "1002"=80.00}.
                 val saldos = listOf(origen, destino).sorted().associateWith { bloquearCuenta(con, it) }
                 val saldoOrigen = saldos.getValue(origen)
                 if (saldoOrigen < cantidad) throw saldoInsuficiente(saldoOrigen.toDouble(), cantidad.toDouble())
@@ -99,6 +109,7 @@ object CuentaRepositorio {
         }
 
     // GET /contratos/{codigo}?servicio=LUZ: consulta una factura antes de pagarla.
+    // Solo LEE la factura: bloquear = false (no hace falta reservarla porque no se modifica).
     suspend fun consultarContrato(codigo: String, servicio: String?): ContratoRespuesta = withContext(Dispatchers.IO) {
         BaseDeDatos.transaccion { con -> leerContrato(con, codigo.trim().uppercase(), servicio, bloquear = false) }
     }
@@ -113,13 +124,14 @@ object CuentaRepositorio {
                 //    espera y luego ve "pagado = true" -> 409 (no se cobra dos veces).
                 val factura = leerContrato(con, codigoNormal, servicio, bloquear = true)
                 if (factura.pagado) throw facturaPagada(codigoNormal)
+                // setScale(2) = el monto con exactamente 2 decimales, como en la columna DECIMAL(12,2).
                 val cantidad = BigDecimal.valueOf(factura.monto).setScale(2)
                 // 2. Bloqueamos la cuenta y validamos fondos.
                 val saldoActual = bloquearCuenta(con, cuenta)
                 if (saldoActual < cantidad) throw saldoInsuficiente(saldoActual.toDouble(), cantidad.toDouble())
                 val nuevoSaldo = saldoActual - cantidad
                 actualizarSaldo(con, cuenta, nuevoSaldo)
-                // 3. Marcamos la factura como pagada.
+                // 3. Marcamos la factura como pagada. NOW(3) = fecha y hora actual de MySQL con milisegundos.
                 con.prepareStatement("UPDATE contratos SET pagado = TRUE, pagado_por = ?, fecha_pago = NOW(3) WHERE codigo = ?").use { ps ->
                     ps.setString(1, cuenta); ps.setString(2, codigoNormal); ps.executeUpdate()
                 }
@@ -134,6 +146,11 @@ object CuentaRepositorio {
     // (una transferencia es "ENVIADA" para quien la hace y "RECIBIDA" para quien la recibe).
     suspend fun movimientos(cuenta: String): List<MovimientoRespuesta> = withContext(Dispatchers.IO) {
         BaseDeDatos.transaccion { con ->
+            // CONSULTA: comprobantes donde la cuenta es ORIGEN o DESTINO (enviados y recibidos).
+            //  - UNIX_TIMESTAMP(fecha) * 1000 -> la fecha en MILISEGUNDOS desde 1970 (el formato que usa la app);
+            //    CAST(... AS SIGNED) lo deja como número entero.
+            //  - ORDER BY fecha DESC, id DESC -> los más recientes primero (id desempata si la fecha es igual).
+            //  - LIMIT 100 -> como máximo 100 filas.
             con.prepareStatement(
                 """
                 SELECT id, tipo, cuenta_origen, cuenta_destino, monto, referencia,
@@ -146,12 +163,14 @@ object CuentaRepositorio {
             ).use { ps ->
                 ps.setString(1, cuenta); ps.setString(2, cuenta)
                 ps.executeQuery().use { rs ->
+                    // buildList { add(...) } arma una lista; "while (rs.next())" recorre las filas una por una.
                     buildList {
                         while (rs.next()) {
                             val origen = rs.getString("cuenta_origen")
                             val destino = rs.getString("cuenta_destino")
                             val referencia = rs.getString("referencia") ?: ""
                             // Convertimos el tipo del servidor al tipo de la app ("when" con Pair).
+                            // "a to b" crea un Pair(a, b); "val (tipo, detalle) =" lo separa en dos variables.
                             val (tipo, detalle) = when (rs.getString("tipo")) {
                                 "DEPOSITO" -> "DEPOSITO" to
                                     (if (referencia == "Bono de bienvenida") referencia else "Depósito en cuenta $cuenta")
@@ -183,6 +202,7 @@ object CuentaRepositorio {
         if (servicioPedido != null && servicioPedido !in SERVICIOS_VALIDOS) {
             throw datoInvalido("Servicio no válido. Usa: $SERVICIOS_VALIDOS")
         }
+        // Solo al PAGAR se agrega " FOR UPDATE": bloquea la fila de la factura hasta el fin de la transacción.
         val sql = "SELECT codigo, servicio, titular, monto, pagado FROM contratos WHERE codigo = ?" + if (bloquear) " FOR UPDATE" else ""
         val factura = con.prepareStatement(sql).use { ps ->
             ps.setString(1, codigo)
