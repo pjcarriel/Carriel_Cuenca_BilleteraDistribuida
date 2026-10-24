@@ -69,7 +69,7 @@ fun DashboardScreen(
     onAccionClick: (TipoOperacion) -> Unit,       // Se tocó un botón de operación (depósito, retiro...).
     onCerrarSesion: () -> Unit,
     onAbrirPruebas: () -> Unit,
-    onVerComprobante: (Movimiento) -> Unit = {},                   // Tocar un movimiento abre su comprobante.
+    onVerDetalle: (Movimiento) -> Unit = {},                       // Tocar un movimiento abre su panel de detalle.
     onAbrirServicios: () -> Unit = {},                             // Laboratorio: administrar servicios.
     esLaboratorio: Boolean,                       // true = usuario "laboratorio" (ve pruebas y nodos).
     nodosConectados: NodosConectados? = null,     // Solo se muestra al laboratorio.
@@ -180,8 +180,8 @@ fun DashboardScreen(
                 // key = { it.id }: identifica cada fila por su id, así Compose no la confunde al llegar una nueva.
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(visibles, key = { it.id }) { movimiento ->
-                        // Tocar = desplegar la descripción; el botón "Ver comprobante" abre el comprobante.
-                        FilaMovimiento(movimiento = movimiento, onVerComprobante = { onVerComprobante(movimiento) })
+                        // Tocar = panel modal con la descripción y el botón "Ver comprobante".
+                        FilaMovimiento(movimiento = movimiento, onClick = { onVerDetalle(movimiento) })
                     }
                 }
             }

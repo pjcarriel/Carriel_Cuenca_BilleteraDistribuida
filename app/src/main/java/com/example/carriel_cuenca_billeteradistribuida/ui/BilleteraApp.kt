@@ -27,6 +27,7 @@ import com.example.carriel_cuenca_billeteradistribuida.model.Movimiento
 import com.example.carriel_cuenca_billeteradistribuida.model.TipoOperacion
 import com.example.carriel_cuenca_billeteradistribuida.ui.admin.AdminServiciosScreen
 import com.example.carriel_cuenca_billeteradistribuida.ui.components.ComprobanteDialog
+import com.example.carriel_cuenca_billeteradistribuida.ui.components.DetalleMovimientoSheet
 import com.example.carriel_cuenca_billeteradistribuida.ui.components.OperacionDialog
 import com.example.carriel_cuenca_billeteradistribuida.ui.pruebas.PruebasConcurrenciaScreen
 import com.example.carriel_cuenca_billeteradistribuida.ui.theme.RojoEgreso
@@ -63,6 +64,8 @@ fun BilleteraApp(
     var mostrarServicios by remember { mutableStateOf(false) }    // Panel de administración de servicios (laboratorio).
     // Comprobante abierto (null = ninguno): al tocar un movimiento o al terminar una operación.
     var comprobante by remember { mutableStateOf<Movimiento?>(null) }
+    // Movimiento cuyo PANEL DE DETALLE está abierto (null = ninguno). Desde ahí se abre el comprobante.
+    var detalle by remember { mutableStateOf<Movimiento?>(null) }
     val comprobanteNuevo by viewModel.comprobanteNuevo.collectAsStateWithLifecycle()
     // SnackbarHostState = controla la barrita de mensajes que aparece abajo.
     val snackbarHostState = remember { SnackbarHostState() }
@@ -111,6 +114,15 @@ fun BilleteraApp(
     }
 
     // Diálogo del comprobante (se dibuja encima de cualquier pantalla).
+    // Panel modal de detalle (al tocar un movimiento). "Ver comprobante" cierra el panel y abre el comprobante.
+    detalle?.let { mov ->
+        DetalleMovimientoSheet(
+            movimiento = mov,
+            onVerComprobante = { detalle = null; comprobante = mov },
+            onCerrar = { detalle = null }
+        )
+    }
+
     comprobante?.let { mov ->
         ComprobanteDialog(movimiento = mov, cuenta = sesion.cuenta, titular = sesion.nombre, onCerrar = { comprobante = null })
     }
@@ -166,7 +178,7 @@ fun BilleteraApp(
                 onAccionClick = { tipo -> dialogoAbierto = tipo },        // Abre el diálogo de esa operación.
                 onCerrarSesion = onCerrarSesion,
                 onAbrirPruebas = { mostrarPruebas = true },
-                onVerComprobante = { comprobante = it },
+                onVerDetalle = { detalle = it },                          // Abre el panel de detalle.
                 onAbrirServicios = { mostrarServicios = true },
                 esLaboratorio = sesion.usuario == "laboratorio",          // Solo este usuario ve pruebas y nodos.
                 nodosConectados = nodosConectados,

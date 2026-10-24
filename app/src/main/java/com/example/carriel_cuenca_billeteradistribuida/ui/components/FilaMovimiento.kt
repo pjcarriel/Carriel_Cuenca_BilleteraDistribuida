@@ -1,19 +1,8 @@
 // Paquete de componentes reutilizables.
 package com.example.carriel_cuenca_billeteradistribuida.ui.components
 
-import androidx.compose.animation.animateContentSize           // Anima el cambio de tamaño de la tarjeta.
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.height
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material3.Button
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -25,6 +14,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.LocalAtm
 import androidx.compose.material.icons.filled.NorthEast
 import androidx.compose.material.icons.filled.Receipt
@@ -53,27 +43,17 @@ import com.example.carriel_cuenca_billeteradistribuida.ui.theme.RojoEgreso
 import com.example.carriel_cuenca_billeteradistribuida.ui.theme.VerdeIngreso
 
 // FILA DEL HISTORIAL: ícono, tipo, (categoría), detalle, fecha/hora y monto en verde o rojo.
-// Al TOCARLA se DESPLIEGA la descripción de la operación y un botón "Ver comprobante";
-// al tocarla otra vez se vuelve a plegar.
+// Es COMPACTA a propósito (la lista puede tener muchos movimientos): al tocarla se abre un panel
+// modal con la descripción y el botón "Ver comprobante" (DetalleMovimientoSheet.kt).
 // @Composable = función que DIBUJA interfaz; Compose la vuelve a llamar cuando cambian sus datos.
 @Composable
-fun FilaMovimiento(movimiento: Movimiento, onVerComprobante: () -> Unit = {}) {
+fun FilaMovimiento(movimiento: Movimiento, onClick: () -> Unit = {}) {   // onClick: abre el panel de detalle.
     // Color y signo según si el dinero entra o sale.
     val colorMonto = if (movimiento.tipo.esIngreso) VerdeIngreso else RojoEgreso
     val signo = if (movimiento.tipo.esIngreso) "+" else "-"
-    // ¿Está desplegada? rememberSaveable(id): cada movimiento recuerda lo suyo (también al rotar).
-    var desplegada by rememberSaveable(movimiento.id) { mutableStateOf(false) }
 
-    // Card con onClick: toda la tarjeta se puede TOCAR (con efecto de onda) para desplegarla o plegarla.
-    // animateContentSize: la tarjeta crece y se encoge con una animación suave.
-    Card(
-        onClick = { desplegada = !desplegada },
-        modifier = Modifier
-            .fillMaxWidth()
-            .animateContentSize(),
-        shape = RoundedCornerShape(16.dp)
-    ) {
-      Column {
+    // Card con onClick: toda la tarjeta se puede TOCAR (con efecto de onda).
+    Card(onClick = onClick, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
         Row(
             // Modifier: cadena de ajustes (tamaño, márgenes, fondo...) que se aplican EN ORDEN.
             modifier = Modifier
@@ -102,47 +82,11 @@ fun FilaMovimiento(movimiento: Movimiento, onVerComprobante: () -> Unit = {}) {
                 Text(movimiento.detalle, color = Color.Gray, fontSize = 12.sp)
                 Text(formatearFecha(movimiento.fechaHora), color = Color.Gray, fontSize = 12.sp)
             }
-            // Monto con signo y color, y debajo una flecha que indica si se puede desplegar o plegar.
-            Column(horizontalAlignment = Alignment.End) {
-                Text("$signo${formatearMonto(movimiento.monto)}", color = colorMonto, fontWeight = FontWeight.Bold)
-                Icon(
-                    if (desplegada) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
-                    contentDescription = if (desplegada) "Ocultar descripción" else "Ver descripción",
-                    tint = Color.Gray
-                )
-            }
+            // Monto con signo y color.
+            Text("$signo${formatearMonto(movimiento.monto)}", color = colorMonto, fontWeight = FontWeight.Bold)
+            // Flechita ">": indica que al tocar se abre el detalle.
+            Icon(Icons.Filled.ChevronRight, contentDescription = "Ver detalle", tint = Color.Gray)
         }
-
-        // ---------- DESCRIPCIÓN (solo si está desplegada) ----------
-        if (desplegada) {
-            Column(modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp)) {
-                HorizontalDivider()
-                Spacer(Modifier.height(8.dp))
-                DatoDescripcion("Descripción", movimiento.detalle)
-                DatoDescripcion("Operación", movimiento.tipo.etiqueta)
-                DatoDescripcion("Fecha y hora", formatearFecha(movimiento.fechaHora))
-                DatoDescripcion("N.º de comprobante", numeroComprobante(movimiento))
-                DatoDescripcion("Estado", "Exitosa")
-                Spacer(Modifier.height(8.dp))
-                // Botón que abre el comprobante completo (el que se puede compartir).
-                Button(onClick = onVerComprobante, modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Filled.Receipt, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Ver comprobante")
-                }
-            }
-        }
-      }
-    }
-}
-
-// Una línea de la descripción desplegada: etiqueta gris a la izquierda y valor a la derecha.
-@Composable
-private fun DatoDescripcion(etiqueta: String, valor: String) {
-    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
-        Text(etiqueta, color = Color.Gray, fontSize = 12.sp, modifier = Modifier.weight(1f))
-        Text(valor, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1.4f),
-            textAlign = TextAlign.End)
     }
 }
 
