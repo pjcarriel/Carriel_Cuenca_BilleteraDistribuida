@@ -11,6 +11,12 @@
          y, además, PEDIRLO al usuario en tiempo de ejecución (es un permiso "peligroso"). -->
     <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
 
+    <!-- Solo Android 8 y 9 (maxSdkVersion 28): permiso para DESCARGAR comprobantes en la Galería.
+         Desde Android 10 la Galería (MediaStore) se usa sin pedir ningún permiso. -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
     <!-- usesCleartextTraffic="true": permite HTTP sin cifrar (http:// y ws://).
          Lo necesitamos porque nuestro servidor local (10.0.2.2) no usa HTTPS. -->
     <!-- Otros atributos de <application>: allowBackup, dataExtractionRules y fullBackupContent = reglas de

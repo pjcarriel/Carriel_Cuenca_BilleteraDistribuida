@@ -1,7 +1,17 @@
 // Paquete de componentes reutilizables.
 package com.example.carriel_cuenca_billeteradistribuida.ui.components
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.material.icons.filled.Download
+import androidx.core.content.ContextCompat
+import com.example.carriel_cuenca_billeteradistribuida.util.ALBUM_COMPROBANTES
+import com.example.carriel_cuenca_billeteradistribuida.util.guardarEnGaleria
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -83,10 +93,33 @@ fun ComprobanteDialog(
     val contexto = LocalContext.current
     val alcance = rememberCoroutineScope()
     var compartiendo by remember { mutableStateOf(false) }      // true mientras se genera la imagen.
+    var descargando by remember { mutableStateOf(false) }       // true mientras se guarda en la Galería.
 
     // CAPA GRÁFICA: todo lo que se dibuje dentro del comprobante se "graba" aquí,
     // y luego se convierte en una imagen (bitmap) para compartirla.
     val capa = rememberGraphicsLayer()
+
+    // DESCARGAR: convierte la capa en imagen y la guarda en la Galería (disco -> Dispatchers.IO dentro).
+    // Un Toast (mensajito flotante) confirma dónde quedó o avisa si falló.
+    fun descargar() {
+        descargando = true
+        alcance.launch {
+            val imagen = capa.toImageBitmap().asAndroidBitmap()
+            val ok = guardarEnGaleria(contexto, imagen, "comprobante_${numeroComprobante(movimiento)}")
+            Toast.makeText(
+                contexto,
+                if (ok) "Comprobante guardado en Galería › $ALBUM_COMPROBANTES" else "No se pudo guardar el comprobante",
+                Toast.LENGTH_LONG
+            ).show()
+            descargando = false
+        }
+    }
+
+    // Solo Android 8 y 9: pide el permiso de almacenamiento; si lo conceden, descarga.
+    val pedirPermiso = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { concedido ->
+        if (concedido) descargar()
+        else Toast.makeText(contexto, "Sin el permiso de almacenamiento no se puede descargar", Toast.LENGTH_LONG).show()
+    }
 
     val esIngreso = movimiento.tipo.esIngreso
     val colorMonto = if (esIngreso) VerdeIngreso else RojoEgreso
@@ -182,11 +215,26 @@ fun ComprobanteDialog(
             // ---------- BOTONES (fuera del comprobante: no salen en la imagen) ----------
             Spacer(Modifier.height(14.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedButton(
-                    onClick = onCerrar,
-                    modifier = Modifier.weight(1f),
-                    colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(containerColor = Color.White)
-                ) { Text("Cerrar") }
+                // DESCARGAR: guarda la imagen en la Galería (álbum "Billetera CC").
+                Button(
+                    onClick = {
+                        // Android 8 y 9 necesitan el permiso de almacenamiento; desde Android 10 no.
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
+                            ContextCompat.checkSelfPermission(contexto, Manifest.permission.WRITE_EXTERNAL_STORAGE) !=
+                            PackageManager.PERMISSION_GRANTED
+                        ) pedirPermiso.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                        else descargar()
+                    },
+                    enabled = !descargando,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    if (descargando) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
+                    else {
+                        Icon(Icons.Filled.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Descargar")
+                    }
+                }
                 Button(
                     onClick = {
                         compartiendo = true
@@ -208,6 +256,12 @@ fun ComprobanteDialog(
                     }
                 }
             }
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = onCerrar,
+                modifier = Modifier.fillMaxWidth(),
+                colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(containerColor = Color.White)
+            ) { Text("Cerrar") }
         }
     }
 }
