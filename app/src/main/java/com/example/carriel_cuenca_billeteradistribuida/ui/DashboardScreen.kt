@@ -180,7 +180,8 @@ fun DashboardScreen(
                 // key = { it.id }: identifica cada fila por su id, así Compose no la confunde al llegar una nueva.
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(visibles, key = { it.id }) { movimiento ->
-                        FilaMovimiento(movimiento = movimiento, onClick = { onVerComprobante(movimiento) })   // Tocar = comprobante.
+                        // Tocar = desplegar la descripción; el botón "Ver comprobante" abre el comprobante.
+                        FilaMovimiento(movimiento = movimiento, onVerComprobante = { onVerComprobante(movimiento) })
                     }
                 }
             }
