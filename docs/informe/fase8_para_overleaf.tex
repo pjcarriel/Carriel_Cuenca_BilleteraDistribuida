@@ -1,0 +1,64 @@
+% =====================================================================
+% FASE 8 — Texto para pegar en informe_APA7.tex (Overleaf).
+% DÓNDE: justo ANTES de la línea "% ================= RESULTADOS".
+% Las imágenes ya están subidas a la carpeta imagenes/ del proyecto de Overleaf.
+% Además (opcional): agregar en la tabla de fases la fila
+%     8 & Comprobantes, pago por cédula y administración de servicios & 24/10/2026 & Completada\\
+% y en la tabla de commits la fila
+%     7d1dd36 & 24/10/2026 & Fase 8: comprobantes, pago por cédula y administración de servicios\\
+% =====================================================================
+
+% ================= FASE 8 =================
+\subsection{Fase 8: Comprobantes, Pago por Cédula y Administración de Servicios}
+
+La última fase acercó la aplicación a la experiencia de una billetera comercial con tres funciones: comprobantes que se pueden compartir, la consulta de facturas por número de cédula y un panel en el que el usuario laboratorio actúa como la empresa de servicios básicos. La Tabla~\ref{tab:fase8} resume los cambios en el servidor y en la aplicación.
+
+\begin{table}[H]
+  \centering
+  \caption{Funciones Añadidas en la Fase 8}\label{tab:fase8}
+  \singlespacing
+  \begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{1.35in} R R@{}}
+    \toprule
+    \textbf{Función} & \textbf{Servidor} & \textbf{Aplicación}\\
+    \midrule
+    Comprobantes & Sin cambios: el N.º de comprobante es el identificador de la transacción en MySQL & Comprobante al tocar un movimiento o al terminar una operación; se comparte como imagen PNG mediante FileProvider\\
+    Pago por cédula & Columnas cedula y periodo en la tabla contratos (migración); GET /facturas?cedula=\&servicio= con validación de la cédula & Modo Por cédula en el diálogo de pago: lista de facturas pendientes y pagadas; se elige una y se paga\\
+    Administración de servicios & GET y POST /admin/facturas solo para el laboratorio (403 para otras cuentas); aviso FACTURAS\_ACTUALIZADAS por WebSocket & Panel con resumen, filtros, creación de facturas y actualización en tiempo real\\
+    \bottomrule
+  \end{tabularx}
+  \nota{Elaboración propia.}
+\end{table}
+
+\subsubsection{Comprobantes Compartibles}
+
+Cada movimiento del historial abre, al tocarlo, un comprobante con el monto, la fecha y hora, el número de comprobante, la cuenta, el titular y el detalle de la operación; tras una operación exitosa el comprobante se abre automáticamente, como en las aplicaciones bancarias. Como sus datos provienen de Room, el comprobante se puede consultar y compartir sin conexión. Para compartirlo, la interfaz se dibuja dentro de una capa gráfica de Compose que luego se convierte en imagen; el archivo PNG se guarda en la caché privada de la aplicación en Dispatchers.IO y se entrega a la aplicación elegida por el usuario mediante FileProvider, que otorga un permiso de lectura temporal solo a esa aplicación (Figura~\ref{fig:comprobante}).
+
+\begin{figure}[H]
+  \centering
+  \caption{Comprobante Compartido como Imagen}\label{fig:comprobante}
+  \includegraphics[width=0.45\textwidth,keepaspectratio]{imagenes/fase8_comprobante_compartido.png}
+  \nota{Imagen PNG generada por la aplicación y enviada al menú de compartir de Android.}
+\end{figure}
+
+\subsubsection{Pago de Servicios por Cédula}
+
+Las facturas de servicios básicos ahora registran la cédula del titular y el mes facturado. En el diálogo de pago, además del código de contrato, el usuario puede escribir una cédula, elegir el servicio y ver todas las facturas de esa persona: las pendientes primero y, en las pagadas, la fecha y la cuenta que realizó el pago (Figura~\ref{fig:pagocedula}). La cédula se valida en la aplicación y de nuevo en el servidor con el algoritmo de módulo 10 de la cédula ecuatoriana: provincia válida, tercer dígito menor que seis y dígito verificador calculado con los coeficientes 2, 1, 2, 1, 2, 1, 2, 1, 2. Las cédulas de los datos de demostración son ficticias, aunque cumplen el algoritmo, y el validador se cubrió con pruebas unitarias.
+
+\begin{figure}[H]
+  \centering
+  \caption{Búsqueda de Facturas por Cédula en el Diálogo de Pago}\label{fig:pagocedula}
+  \includegraphics[height=0.5\textheight,keepaspectratio]{imagenes/fase8_pago_por_cedula.png}
+  \nota{La factura elegida se resalta y el botón muestra el monto a pagar.}
+\end{figure}
+
+\subsubsection{Administración de Servicios en Tiempo Real}
+
+El usuario laboratorio dispone de un panel de administración con el total por cobrar y el total recaudado, filtros por estado y por servicio, y un formulario para crear facturas; el servidor genera el código de contrato y rechaza con el código 403 cualquier intento de administración desde otra cuenta. Cuando un cliente paga una factura desde cualquier dispositivo, el servidor envía al laboratorio el aviso FACTURAS\_ACTUALIZADAS por WebSocket; el panel recarga la lista sin intervención del usuario y muestra quién pagó (Figura~\ref{fig:admintiemporeal}). Este comportamiento extiende al dominio de los servicios el mismo mecanismo de notificación en tiempo real usado para las transferencias.
+
+\begin{figure}[H]
+  \centering
+  \caption{Panel de Administración Actualizado en Tiempo Real}\label{fig:admintiemporeal}
+  \includegraphics[height=0.5\textheight,keepaspectratio]{imagenes/fase8_admin_tiempo_real.png}
+  \nota{El aviso inferior y la factura marcada como pagada aparecieron sin recargar, cuando la cuenta 1002 pagó desde otro cliente.}
+\end{figure}
+
