@@ -8,5 +8,10 @@ data class Factura(
     val servicio: String,       // "LUZ", "AGUA" o "INTERNET".
     val titular: String,        // A nombre de quién está el contrato.
     val monto: Double,          // Lo que se debe pagar.
-    val pagado: Boolean         // true = ya se pagó (no se puede pagar otra vez).
+    val pagado: Boolean,        // true = ya se pagó (no se puede pagar otra vez).
+    // Fase 8 (con valor por defecto: las facturas antiguas pueden no tenerlos).
+    val cedula: String? = null,     // Cédula del titular (ej. "1712345675").
+    val periodo: String? = null,    // Mes facturado (ej. "Octubre 2026").
+    val pagadoPor: String? = null,  // Cuenta que la pagó (solo si pagado = true).
+    val fechaPago: Long? = null     // Cuándo se pagó, en milisegundos (solo si pagado = true).
 )

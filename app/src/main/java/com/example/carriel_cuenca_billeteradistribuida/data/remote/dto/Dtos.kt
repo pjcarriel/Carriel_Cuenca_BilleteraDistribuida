@@ -41,7 +41,24 @@ data class ContratoDto(
     val servicio: String,
     val titular: String,
     val monto: Double,
-    val pagado: Boolean
+    val pagado: Boolean,
+    // Fase 8: nullable porque el servidor no los envía si están vacíos (y Gson deja null).
+    val cedula: String?,
+    val periodo: String?,
+    val pagadoPor: String?,
+    val fechaPago: Long?
+)
+
+// Aviso simple por WEBSOCKET (laboratorio): {"tipo":"FACTURAS_ACTUALIZADAS","detalle":"La cuenta 1001 pagó LUZ 445568"}
+data class EventoAvisoDto(val tipo: String, val detalle: String?)
+
+// POST /admin/facturas (solo laboratorio): crear una factura nueva.
+data class NuevaFacturaRequest(
+    val cedula: String,
+    val titular: String,
+    val servicio: String,
+    val periodo: String,
+    val monto: Double
 )
 
 // GET /movimientos: un comprobante del historial del servidor.

@@ -6,6 +6,7 @@ import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.CuentaDto
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.LoginRequest
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.MontoRequest
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.MovimientoDto
+import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.NuevaFacturaRequest
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.OperacionRespuestaDto
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.PagoServicioRequest
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.RegistroRequest
@@ -46,6 +47,18 @@ interface BilleteraApi {
     // GET /contratos/445566?servicio=LUZ
     @GET("contratos/{codigo}")
     suspend fun consultarContrato(@Path("codigo") codigo: String, @Query("servicio") servicio: String): ContratoDto
+
+    // GET /facturas?cedula=1712345675&servicio=LUZ -> facturas de esa cédula (pendientes primero).
+    @GET("facturas")
+    suspend fun facturasPorCedula(@Query("cedula") cedula: String, @Query("servicio") servicio: String): List<ContratoDto>
+
+    // ---------- Administración de servicios (solo laboratorio; otra cuenta recibe 403) ----------
+    // "String?" en @Query: si es null, Retrofit no agrega ese parámetro a la URL.
+    @GET("admin/facturas")
+    suspend fun adminFacturas(@Query("estado") estado: String?, @Query("servicio") servicio: String?): List<ContratoDto>
+
+    @POST("admin/facturas")
+    suspend fun crearFactura(@Body cuerpo: NuevaFacturaRequest): ContratoDto
 
     @POST("depositar")
     suspend fun depositar(@Body cuerpo: MontoRequest): OperacionRespuestaDto

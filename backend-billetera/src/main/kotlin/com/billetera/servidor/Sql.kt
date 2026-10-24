@@ -4,10 +4,34 @@ package com.billetera.servidor
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.sql.Connection
+import java.sql.ResultSet
 import java.sql.Statement
 
 // OPERACIONES SQL COMPARTIDAS por los repositorios (siempre dentro de una transacción).
 // "internal" = visibles en todo el módulo del servidor, pero no fuera de él.
+
+// Columnas de una FACTURA (tabla contratos), en el mismo orden en todas las consultas.
+// fecha_pago se convierte a milisegundos (como las demás fechas que viajan a la app).
+internal const val COLUMNAS_FACTURA =
+    "codigo, servicio, titular, monto, pagado, cedula, periodo, pagado_por, " +
+        "CAST(UNIX_TIMESTAMP(fecha_pago) * 1000 AS SIGNED) AS fecha_pago_ms"
+
+// Convierte la fila actual de un ResultSet (con COLUMNAS_FACTURA) en un ContratoRespuesta.
+// getLong devuelve 0 si la columna es NULL: wasNull() dice si de verdad era NULL (factura sin pagar).
+internal fun leerFactura(rs: ResultSet): ContratoRespuesta {
+    val fechaPago = rs.getLong("fecha_pago_ms").takeUnless { rs.wasNull() }
+    return ContratoRespuesta(
+        codigo = rs.getString("codigo"),
+        servicio = rs.getString("servicio"),
+        titular = rs.getString("titular"),
+        monto = rs.getBigDecimal("monto").toDouble(),
+        pagado = rs.getBoolean("pagado"),
+        cedula = rs.getString("cedula"),
+        periodo = rs.getString("periodo"),
+        pagadoPor = rs.getString("pagado_por"),
+        fechaPago = fechaPago
+    )
+}
 
 // Monto válido (> 0) convertido a BigDecimal con 2 decimales exactos.
 // BigDecimal guarda el número EXACTO (un Double puede dar 0.1 + 0.2 = 0.30000000000000004).

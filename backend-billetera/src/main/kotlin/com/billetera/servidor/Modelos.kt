@@ -62,8 +62,28 @@ data class ContratoRespuesta(
     val servicio: String,           // "LUZ", "AGUA" o "INTERNET".
     val titular: String,
     val monto: Double,              // Lo que se debe pagar.
-    val pagado: Boolean
+    val pagado: Boolean,
+    // Campos de la Fase 8 (con valor por defecto null: si faltan, el JSON simplemente no los incluye).
+    val cedula: String? = null,     // Cédula del titular (ej. "1712345675").
+    val periodo: String? = null,    // Mes facturado (ej. "Octubre 2026").
+    val pagadoPor: String? = null,  // Cuenta que la pagó (solo si pagado = true).
+    val fechaPago: Long? = null     // Cuándo se pagó, en milisegundos (solo si pagado = true).
 )
+
+// POST /admin/facturas (solo laboratorio): crear una factura nueva.
+// {"cedula":"1712345675","titular":"Pamela Carriel","servicio":"LUZ","periodo":"Diciembre 2026","monto":31.5}
+@Serializable
+data class NuevaFacturaRequest(
+    val cedula: String,
+    val titular: String,
+    val servicio: String,
+    val periodo: String,
+    val monto: Double
+)
+
+// Aviso simple por WebSocket (ej. al laboratorio: "FACTURAS_ACTUALIZADAS" cuando alguien paga).
+@Serializable
+data class EventoAviso(val tipo: String, val detalle: String? = null)
 
 // Respuesta de toda operación exitosa.
 @Serializable
@@ -145,4 +165,8 @@ fun contratoNoExiste(codigo: String) = ErrorNegocio(HttpStatusCode.NotFound, "CO
 fun saldoInsuficiente(saldo: Double, monto: Double) = ErrorNegocio(HttpStatusCode.Conflict, "SALDO_INSUFICIENTE",
     "Saldo insuficiente: tienes $saldo y se requieren $monto")
 fun usuarioExiste(usuario: String) = ErrorNegocio(HttpStatusCode.Conflict, "USUARIO_EXISTE", "El usuario '$usuario' ya está registrado")
-fun facturaPagada(codigo: String) = ErrorNegocio(HttpStatusCode.Conflict, "FACTURA_PAGADA", "La factura del contrato $codigo ya fue pagada")
+// --- 403: tiene sesión, pero NO tiene permiso (ej. administrar servicios sin ser el laboratorio) ---
+fun sinPermiso() = ErrorNegocio(HttpStatusCode.Forbidden, "SIN_PERMISO", "Solo el usuario laboratorio puede administrar los servicios")
+// --- 400: cédula que no cumple el algoritmo ecuatoriano ---
+fun cedulaInvalida() = ErrorNegocio(HttpStatusCode.BadRequest, "CEDULA_INVALIDA", "La cédula no es válida")
+fun facturaPagada(codigo: String) =ErrorNegocio(HttpStatusCode.Conflict, "FACTURA_PAGADA", "La factura del contrato $codigo ya fue pagada")

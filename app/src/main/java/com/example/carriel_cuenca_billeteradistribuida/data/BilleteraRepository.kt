@@ -13,7 +13,10 @@ import com.example.carriel_cuenca_billeteradistribuida.data.remote.ProveedorToke
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.RetrofitClient
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.SesionRechazadaException
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.WebSocketCliente
+import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.ContratoDto
+import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.EventoAvisoDto
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.EventoConexionesDto
+import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.NuevaFacturaRequest
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.EventoWebSocketDto
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.MontoRequest
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.OperacionRespuestaDto
@@ -49,6 +52,9 @@ private const val ESPERA_MAXIMA_MS = 10_000L
 // Resultado de una operación del panel de pruebas: si salió bien y en qué hilo corrió.
 data class ResultadoHilo(val exito: Boolean, val hilo: String)
 
+// Resultado de una operación que salió bien: el mensaje del servidor y el comprobante guardado en Room.
+data class OperacionHecha(val mensaje: String, val movimiento: Movimiento)
+
 // REPOSITORIO DE LA BILLETERA de UNA cuenta (la del usuario que inició sesión).
 // Combina Room (historial y último saldo), Retrofit (operaciones) y WebSocket (tiempo real).
 // REGLA DE ESTE ARCHIVO: todo trabajo de disco/red se hace en Dispatchers.IO.
@@ -74,6 +80,10 @@ class BilleteraRepository(
     // Nodos conectados al servidor (solo llega al laboratorio). null = desconocido (sin túnel abierto).
     private val _nodosConectados = MutableStateFlow<NodosConectados?>(null)
     val nodosConectados: StateFlow<NodosConectados?> = _nodosConectados.asStateFlow()
+
+    // Evento (solo laboratorio): cambió alguna factura (alguien pagó o se creó una). Lleva el detalle.
+    private val _facturasActualizadas = MutableSharedFlow<String>(extraBufferCapacity = 10)
+    val facturasActualizadas: SharedFlow<String> = _facturasActualizadas.asSharedFlow()
 
     // SharedFlow (a diferencia de StateFlow) NO guarda un valor actual: sirve para EVENTOS que
     // ocurren una vez (un aviso), que no deben repetirse al volver a observar.
@@ -145,13 +155,44 @@ class BilleteraRepository(
     suspend fun consultarFactura(servicio: String, codigo: String): Resultado<Factura> = withContext(Dispatchers.IO) {
         llamarServidor {
             logHilo("Repository: GET /contratos/$codigo?servicio=$servicio (Retrofit)")
-            val dto = api.consultarContrato(codigo, servicio)
-            Factura(dto.codigo, dto.servicio, dto.titular, dto.monto, dto.pagado)
+            api.consultarContrato(codigo, servicio).aFactura()
         }
     }
 
+    // Busca las facturas de una CÉDULA para un servicio (pendientes primero).
+    suspend fun buscarFacturas(cedula: String, servicio: String): Resultado<List<Factura>> = withContext(Dispatchers.IO) {
+        llamarServidor {
+            logHilo("Repository: GET /facturas?cedula=$cedula&servicio=$servicio (Retrofit)")
+            api.facturasPorCedula(cedula, servicio).map { it.aFactura() }
+        }
+    }
+
+    // ---------------------------- ADMINISTRACIÓN DE SERVICIOS (laboratorio) ----------------------------
+
+    // Todas las facturas (estado: "PENDIENTES", "PAGADAS" o null = todas; servicio: null = todos).
+    suspend fun adminFacturas(estado: String?, servicio: String?): Resultado<List<Factura>> = withContext(Dispatchers.IO) {
+        llamarServidor {
+            logHilo("Repository: GET /admin/facturas estado=$estado servicio=$servicio (Retrofit)")
+            api.adminFacturas(estado, servicio).map { it.aFactura() }
+        }
+    }
+
+    // Crea una factura pendiente (el servidor genera el código de contrato).
+    suspend fun crearFactura(cedula: String, titular: String, servicio: String, periodo: String, monto: Double): Resultado<Factura> =
+        withContext(Dispatchers.IO) {
+            llamarServidor {
+                logHilo("Repository: POST /admin/facturas $servicio $cedula (Retrofit)")
+                api.crearFactura(NuevaFacturaRequest(cedula, titular, servicio, periodo, monto)).aFactura()
+            }
+        }
+
+    // DTO de red -> modelo de la app (función de extensión privada: solo se usa en este archivo).
+    private fun ContratoDto.aFactura() =
+        Factura(codigo, servicio, titular, monto, pagado, cedula, periodo, pagadoPor, fechaPago)
+
     // Ejecuta en el servidor cualquiera de las 4 operaciones y guarda el comprobante en Room.
-    suspend fun ejecutar(solicitud: Solicitud): Resultado<OperacionRespuestaDto> = withContext(Dispatchers.IO) {
+    // Devuelve el mensaje del servidor y el MOVIMIENTO guardado (para mostrar su comprobante enseguida).
+    suspend fun ejecutar(solicitud: Solicitud): Resultado<OperacionHecha> = withContext(Dispatchers.IO) {
         llamarServidor {
             // "when" sobre una sealed class: Kotlin obliga a cubrir los 4 casos (no hace falta "else").
             // Primero el SERVIDOR (fuente oficial); solo si responde OK se guarda el comprobante en Room.
@@ -174,9 +215,11 @@ class BilleteraRepository(
                 }
             }
             logHilo("Repository: servidor OK (saldo ${respuesta.saldo}), guardando comprobante en Room")
-            movimientoDao.insertar(crearMovimiento(solicitud, respuesta).aEntidad(cuenta))
+            val movimiento = crearMovimiento(solicitud, respuesta)
+            // insertar() devuelve el id que Room le asignó: lo ponemos en el movimiento del comprobante.
+            val id = movimientoDao.insertar(movimiento.aEntidad(cuenta))
             guardarSaldo(respuesta.saldo)
-            respuesta
+            OperacionHecha(respuesta.mensaje, movimiento.copy(id = maxOf(id, 0)))
         }
     }
 
@@ -269,6 +312,12 @@ class BilleteraRepository(
         when (evento.tipo) {
             "CONECTADO" -> guardarSaldo(evento.saldo)
             // Solo para el laboratorio: cuántos teléfonos tienen el túnel abierto.
+            // Solo para el laboratorio: una factura cambió -> el panel de servicios vuelve a cargar la lista.
+            "FACTURAS_ACTUALIZADAS" -> {
+                val detalle = runCatching { gson.fromJson(texto, EventoAvisoDto::class.java) }.getOrNull()?.detalle
+                logHilo("Repository: facturas actualizadas ($detalle)")
+                _facturasActualizadas.emit(detalle ?: "Facturas actualizadas")
+            }
             "CONEXIONES" -> {
                 val dto = runCatching { gson.fromJson(texto, EventoConexionesDto::class.java) }.getOrNull() ?: return
                 logHilo("Repository: nodos conectados = ${dto.total} ${dto.cuentas}")

@@ -23,7 +23,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.carriel_cuenca_billeteradistribuida.data.local.SesionEntity
 import com.example.carriel_cuenca_billeteradistribuida.model.EstadoOperacion
+import com.example.carriel_cuenca_billeteradistribuida.model.Movimiento
 import com.example.carriel_cuenca_billeteradistribuida.model.TipoOperacion
+import com.example.carriel_cuenca_billeteradistribuida.ui.admin.AdminServiciosScreen
+import com.example.carriel_cuenca_billeteradistribuida.ui.components.ComprobanteDialog
 import com.example.carriel_cuenca_billeteradistribuida.ui.components.OperacionDialog
 import com.example.carriel_cuenca_billeteradistribuida.ui.pruebas.PruebasConcurrenciaScreen
 import com.example.carriel_cuenca_billeteradistribuida.ui.theme.RojoEgreso
@@ -57,6 +60,10 @@ fun BilleteraApp(
     // dialogoAbierto: qué operación se está haciendo (depósito, retiro...) o null = ningún diálogo.
     var dialogoAbierto by remember { mutableStateOf<TipoOperacion?>(null) }
     var mostrarPruebas by remember { mutableStateOf(false) }      // Panel de pruebas de concurrencia.
+    var mostrarServicios by remember { mutableStateOf(false) }    // Panel de administración de servicios (laboratorio).
+    // Comprobante abierto (null = ninguno): al tocar un movimiento o al terminar una operación.
+    var comprobante by remember { mutableStateOf<Movimiento?>(null) }
+    val comprobanteNuevo by viewModel.comprobanteNuevo.collectAsStateWithLifecycle()
     // SnackbarHostState = controla la barrita de mensajes que aparece abajo.
     val snackbarHostState = remember { SnackbarHostState() }
     var mensajeEsError by remember { mutableStateOf(false) }      // Decide el color del Snackbar.
@@ -96,6 +103,26 @@ fun BilleteraApp(
             }
             EstadoOperacion.Inactivo, EstadoOperacion.Procesando -> Unit   // Nada que mostrar.
         }
+    }
+
+    // Operación exitosa: el ViewModel entrega su comprobante y lo abrimos (como en los bancos).
+    LaunchedEffect(comprobanteNuevo) {
+        comprobanteNuevo?.let { comprobante = it; viewModel.comprobanteMostrado() }
+    }
+
+    // Diálogo del comprobante (se dibuja encima de cualquier pantalla).
+    comprobante?.let { mov ->
+        ComprobanteDialog(movimiento = mov, cuenta = sesion.cuenta, titular = sesion.nombre, onCerrar = { comprobante = null })
+    }
+
+    // Panel de administración de servicios (solo laboratorio), en lugar del dashboard.
+    if (mostrarServicios) {
+        AdminServiciosScreen(
+            viewModel = viewModel,
+            onVolver = { mostrarServicios = false },
+            onActividad = onActividad
+        )
+        return
     }
 
     // Si el panel de pruebas está abierto, lo mostramos en lugar del dashboard
@@ -139,6 +166,8 @@ fun BilleteraApp(
                 onAccionClick = { tipo -> dialogoAbierto = tipo },        // Abre el diálogo de esa operación.
                 onCerrarSesion = onCerrarSesion,
                 onAbrirPruebas = { mostrarPruebas = true },
+                onVerComprobante = { comprobante = it },
+                onAbrirServicios = { mostrarServicios = true },
                 esLaboratorio = sesion.usuario == "laboratorio",          // Solo este usuario ve pruebas y nodos.
                 nodosConectados = nodosConectados,
                 modifier = Modifier.fillMaxSize()
@@ -155,6 +184,7 @@ fun BilleteraApp(
             cuentaPropia = sesion.cuenta,
             // Referencia a la función suspend del ViewModel: el diálogo la llama y espera la factura.
             onConsultarFactura = viewModel::consultarFactura,
+            onBuscarFacturas = viewModel::buscarFacturas,           // Pago "Por cédula".
             onActividad = onActividad,
             // Confirmar: se cierra el diálogo y el ViewModel ejecuta la operación en segundo plano.
             onConfirmar = { solicitud ->

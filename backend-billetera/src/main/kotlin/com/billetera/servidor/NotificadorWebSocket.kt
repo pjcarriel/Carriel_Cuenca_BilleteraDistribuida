@@ -91,6 +91,13 @@ object NotificadorWebSocket {
         log.info("Notificación ${evento.tipo} enviada a la cuenta $cuenta: $texto")
     }
 
+    // Aviso al LABORATORIO (ej. "FACTURAS_ACTUALIZADAS" cuando alguien paga o se crea una factura).
+    // Si el laboratorio no está conectado, simplemente no se envía (enviarTexto no encuentra conexiones).
+    suspend fun avisarLaboratorio(evento: EventoAviso) {
+        enviarTexto(CUENTA_LABORATORIO, json.encodeToString(evento))
+        log.info("Aviso ${evento.tipo} al laboratorio: ${evento.detalle}")
+    }
+
     // Envía un texto ya convertido a JSON a todas las conexiones de una cuenta.
     private suspend fun enviarTexto(cuenta: String, texto: String) {
         sesiones[cuenta]?.forEach { sesion ->

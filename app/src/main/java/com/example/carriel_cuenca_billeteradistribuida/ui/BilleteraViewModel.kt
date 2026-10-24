@@ -12,6 +12,7 @@ import com.example.carriel_cuenca_billeteradistribuida.data.Resultado
 import com.example.carriel_cuenca_billeteradistribuida.data.local.BilleteraDatabase
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.RetrofitClient
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.WebSocketCliente
+import com.example.carriel_cuenca_billeteradistribuida.model.EstadoAdmin
 import com.example.carriel_cuenca_billeteradistribuida.model.EstadoConexion
 import com.example.carriel_cuenca_billeteradistribuida.model.EstadoOperacion
 import com.example.carriel_cuenca_billeteradistribuida.model.EstadoPruebas
@@ -78,6 +79,10 @@ class BilleteraViewModel(
                 _estado.value = EstadoOperacion.Exito("Recibiste ${formatearMonto(movimiento.monto)} (${movimiento.detalle})")
             }
         }
+        // Alguien pagó o se creó una factura: si el panel de servicios está abierto, se recarga solo.
+        viewModelScope.launch {
+            repositorio.facturasActualizadas.collect { if (_admin.value.abierto) cargarFacturasAdmin() }
+        }
         // El WebSocket fue rechazado por la sesión: avisamos al SesionViewModel.
         viewModelScope.launch {
             repositorio.sesionRechazada.collect { mensaje -> onSesionInvalida(mensaje) }
@@ -123,6 +128,48 @@ class BilleteraViewModel(
         return resultado
     }
 
+    // Busca las facturas de una cédula. "suspend" como consultarFactura: el diálogo espera la lista.
+    suspend fun buscarFacturas(cedula: String, servicio: String): Resultado<List<Factura>> {
+        val resultado = repositorio.buscarFacturas(cedula, servicio)
+        if (resultado is Resultado.Error && resultado.codigoHttp == HTTP_NO_AUTORIZADO) onSesionInvalida(resultado.mensaje)
+        return resultado
+    }
+
+    // ---------------- ADMINISTRACIÓN DE SERVICIOS (solo laboratorio) ----------------
+    private val _admin = MutableStateFlow(EstadoAdmin())
+    val admin: StateFlow<EstadoAdmin> = _admin.asStateFlow()
+
+    // Avisos en tiempo real ("La cuenta 1001 pagó LUZ 445568"): la pantalla los muestra en un Snackbar.
+    val avisosFacturas: SharedFlow<String> = repositorio.facturasActualizadas
+
+    // Carga la lista con los filtros actuales. Si se pasan filtros nuevos, primero los guarda.
+    // "copy" crea un EstadoAdmin igual pero con los campos indicados cambiados.
+    fun cargarFacturasAdmin(estado: String? = _admin.value.estado, servicio: String? = _admin.value.servicio) {
+        _admin.value = _admin.value.copy(cargando = true, estado = estado, servicio = servicio, error = null, abierto = true)
+        viewModelScope.launch {
+            when (val r = repositorio.adminFacturas(estado, servicio)) {
+                is Resultado.Exito -> _admin.value = _admin.value.copy(cargando = false, facturas = r.datos)
+                is Resultado.Error -> {
+                    _admin.value = _admin.value.copy(cargando = false, error = r.mensaje)
+                    if (r.codigoHttp == HTTP_NO_AUTORIZADO) onSesionInvalida(r.mensaje)
+                }
+            }
+        }
+    }
+
+    // El panel se cerró: ya no hace falta recargar con cada aviso.
+    fun cerrarAdmin() {
+        _admin.value = _admin.value.copy(abierto = false)
+    }
+
+    // Crea una factura. Si sale bien, recarga la lista para que aparezca.
+    suspend fun crearFactura(cedula: String, titular: String, servicio: String, periodo: String, monto: Double): Resultado<Factura> {
+        val r = repositorio.crearFactura(cedula, titular, servicio, periodo, monto)
+        if (r is Resultado.Exito) cargarFacturasAdmin()
+        if (r is Resultado.Error && r.codigoHttp == HTTP_NO_AUTORIZADO) onSesionInvalida(r.mensaje)
+        return r
+    }
+
     // Envía una operación al servidor (al confirmar un diálogo).
     fun ejecutarOperacion(solicitud: Solicitud) {
         // Si ya hay una operación en curso, se ignora el nuevo toque (evita enviar dos veces la misma).
@@ -131,10 +178,24 @@ class BilleteraViewModel(
             logHilo("ViewModel: enviando ${solicitud.tipo.etiqueta} de ${solicitud.monto}")
             _estado.value = EstadoOperacion.Procesando
             when (val resultado = repositorio.ejecutar(solicitud)) {
-                is Resultado.Exito -> _estado.value = EstadoOperacion.Exito(resultado.datos.mensaje)
+                is Resultado.Exito -> {
+                    _estado.value = EstadoOperacion.Exito(resultado.datos.mensaje)
+                    // Como en los bancos: al terminar bien, se muestra el COMPROBANTE de la operación.
+                    _comprobanteNuevo.value = resultado.datos.movimiento
+                }
                 is Resultado.Error -> manejarError(resultado)
             }
         }
+    }
+
+    // ---------------- COMPROBANTES ----------------
+    // Comprobante que la pantalla debe abrir sola tras una operación exitosa (null = ninguno).
+    private val _comprobanteNuevo = MutableStateFlow<Movimiento?>(null)
+    val comprobanteNuevo: StateFlow<Movimiento?> = _comprobanteNuevo.asStateFlow()
+
+    // La pantalla ya abrió el comprobante: lo quitamos para no abrirlo otra vez (ej. al rotar).
+    fun comprobanteMostrado() {
+        _comprobanteNuevo.value = null
     }
 
     // La pantalla ya mostró el mensaje: volvemos a Inactivo para no mostrarlo otra vez.

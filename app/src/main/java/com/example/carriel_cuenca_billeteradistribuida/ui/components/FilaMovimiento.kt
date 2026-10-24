@@ -44,12 +44,13 @@ import com.example.carriel_cuenca_billeteradistribuida.ui.theme.VerdeIngreso
 // FILA DEL HISTORIAL: ícono, tipo, (categoría), detalle, fecha/hora y monto en verde o rojo.
 // @Composable = función que DIBUJA interfaz; Compose la vuelve a llamar cuando cambian sus datos.
 @Composable
-fun FilaMovimiento(movimiento: Movimiento) {
+fun FilaMovimiento(movimiento: Movimiento, onClick: () -> Unit = {}) {   // onClick: abre el comprobante.
     // Color y signo según si el dinero entra o sale.
     val colorMonto = if (movimiento.tipo.esIngreso) VerdeIngreso else RojoEgreso
     val signo = if (movimiento.tipo.esIngreso) "+" else "-"
 
-    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {  // Tarjeta con esquinas redondeadas.
+    // Card con onClick: toda la tarjeta se puede TOCAR (con efecto de onda) para ver su comprobante.
+    Card(onClick = onClick, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
         Row(
             // Modifier: cadena de ajustes (tamaño, márgenes, fondo...) que se aplican EN ORDEN.
             modifier = Modifier

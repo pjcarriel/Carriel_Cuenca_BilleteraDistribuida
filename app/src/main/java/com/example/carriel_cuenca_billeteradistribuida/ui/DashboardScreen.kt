@@ -17,6 +17,7 @@ import androidx.compose.material.icons.automirrored.filled.ReceiptLong   // Vers
 import androidx.compose.material.icons.filled.ChevronLeft                // Flecha izquierda del filtro.
 import androidx.compose.material.icons.filled.ChevronRight               // Flecha derecha del filtro.
 import androidx.compose.material.icons.filled.Science                    // Ícono del panel de pruebas.
+import androidx.compose.material.icons.filled.Storefront                 // Ícono de administrar servicios.
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -68,6 +69,8 @@ fun DashboardScreen(
     onAccionClick: (TipoOperacion) -> Unit,       // Se tocó un botón de operación (depósito, retiro...).
     onCerrarSesion: () -> Unit,
     onAbrirPruebas: () -> Unit,
+    onVerComprobante: (Movimiento) -> Unit = {},                   // Tocar un movimiento abre su comprobante.
+    onAbrirServicios: () -> Unit = {},                             // Laboratorio: administrar servicios.
     esLaboratorio: Boolean,                       // true = usuario "laboratorio" (ve pruebas y nodos).
     nodosConectados: NodosConectados? = null,     // Solo se muestra al laboratorio.
     modifier: Modifier = Modifier
@@ -126,6 +129,8 @@ fun DashboardScreen(
                 Text("@$usuario", color = Color.Gray)
             }
             if (esLaboratorio) {
+                // El laboratorio también es la "empresa de servicios": administra las facturas.
+                IconButton(onClick = onAbrirServicios) { Icon(Icons.Filled.Storefront, contentDescription = "Administrar servicios") }
                 IconButton(onClick = onAbrirPruebas) { Icon(Icons.Filled.Science, contentDescription = "Pruebas de concurrencia") }
             }
             IconButton(onClick = onCerrarSesion) { Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Cerrar sesión") }
@@ -174,7 +179,9 @@ fun DashboardScreen(
                 // LazyColumn = lista que solo dibuja las filas visibles (eficiente con muchas filas).
                 // key = { it.id }: identifica cada fila por su id, así Compose no la confunde al llegar una nueva.
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(visibles, key = { it.id }) { movimiento -> FilaMovimiento(movimiento = movimiento) }
+                    items(visibles, key = { it.id }) { movimiento ->
+                        FilaMovimiento(movimiento = movimiento, onClick = { onVerComprobante(movimiento) })   // Tocar = comprobante.
+                    }
                 }
             }
 

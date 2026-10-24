@@ -2,6 +2,10 @@
 package com.example.carriel_cuenca_billeteradistribuida.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -50,8 +54,11 @@ import com.example.carriel_cuenca_billeteradistribuida.model.EstadoConexion
 import com.example.carriel_cuenca_billeteradistribuida.model.Factura
 import com.example.carriel_cuenca_billeteradistribuida.model.Solicitud
 import com.example.carriel_cuenca_billeteradistribuida.model.TipoOperacion
+import com.example.carriel_cuenca_billeteradistribuida.ui.formatearFecha
 import com.example.carriel_cuenca_billeteradistribuida.ui.formatearMonto
 import com.example.carriel_cuenca_billeteradistribuida.ui.theme.AmbarConectando
+import com.example.carriel_cuenca_billeteradistribuida.ui.theme.AzulTarjetaClaro
+import com.example.carriel_cuenca_billeteradistribuida.util.cedulaValida
 import com.example.carriel_cuenca_billeteradistribuida.ui.theme.RojoEgreso
 import com.example.carriel_cuenca_billeteradistribuida.ui.theme.VerdeIngreso
 import kotlinx.coroutines.launch
@@ -76,6 +83,8 @@ fun OperacionDialog(
     cuentaPropia: String,                                            // Para impedir transferirse a sí mismo.
     // "suspend" = función que puede ESPERAR (la respuesta del servidor) sin congelar la pantalla.
     onConsultarFactura: suspend (servicio: String, codigo: String) -> Resultado<Factura>,
+    // Busca las facturas de una cédula (pago "Por cédula").
+    onBuscarFacturas: suspend (cedula: String, servicio: String) -> Resultado<List<Factura>>,
     onActividad: () -> Unit,                                         // Escribir aquí también es "actividad".
     onConfirmar: (Solicitud) -> Unit,                           // Se llama con la Solicitud ya validada.
     onCancelar: () -> Unit                                      // Se llama al cerrar sin hacer nada.
@@ -94,6 +103,10 @@ fun OperacionDialog(
     // Factura consultada (null = todavía no se consultó) y si la consulta está en curso.
     var factura by remember { mutableStateOf<Factura?>(null) }
     var consultando by remember { mutableStateOf(false) }
+    // PAGO POR CÉDULA: el modo elegido, la cédula escrita y las facturas encontradas (null = no se buscó).
+    var porCedula by remember { mutableStateOf(false) }
+    var cedula by remember { mutableStateOf("") }
+    var facturasCedula by remember { mutableStateOf<List<Factura>?>(null) }
 
     // Ámbito de corrutinas del diálogo: la consulta se cancela sola si el diálogo se cierra.
     val alcance = rememberCoroutineScope()
@@ -146,6 +159,28 @@ fun OperacionDialog(
         }
     }
 
+    // Busca las facturas de la cédula escrita para el servicio elegido.
+    fun buscarPorCedula() {
+        // Se valida AQUÍ con el algoritmo de la cédula ecuatoriana (util/Cedula.kt), sin ir al servidor.
+        if (!cedulaValida(cedula)) {
+            errorExtra = "Cédula no válida (10 dígitos con dígito verificador correcto)"
+            return
+        }
+        alcance.launch {
+            consultando = true
+            errorExtra = null
+            factura = null                                      // Se elige de nuevo de la lista.
+            when (val r = onBuscarFacturas(cedula, servicio)) {
+                is Resultado.Exito -> {
+                    facturasCedula = r.datos
+                    if (r.datos.isEmpty()) errorExtra = "Esta cédula no tiene facturas de $servicio"
+                }
+                is Resultado.Error -> { facturasCedula = null; errorExtra = r.mensaje }
+            }
+            consultando = false
+        }
+    }
+
     // Valida y entrega la solicitud.
     fun confirmar() {
         // PAGO: solo se confirma si ya se consultó la factura y no está pagada.
@@ -153,6 +188,7 @@ fun OperacionDialog(
             val f = factura                                     // Copia local: así Kotlin puede hacer "smart cast" (factura es un var).
             // "when" sin argumento: el primer caso verdadero da el mensaje; null = todo bien.
             errorExtra = when {
+                f == null && porCedula -> "Busca la cédula y toca una factura pendiente"
                 f == null -> "Primero consulta la factura (botón de la lupa)"
                 f.pagado -> "Esta factura ya fue pagada"
                 else -> null
@@ -193,7 +229,11 @@ fun OperacionDialog(
         icon = { Icon(iconoDeTipo(tipo, servicio), contentDescription = null) },  // Ícono según el tipo o el servicio.
         title = { Text(titulo) },                               // Título del diálogo.
         text = {                                                // Cuerpo del diálogo: los campos.
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {  // Campos separados 10 dp.
+            // verticalScroll: con la lista de facturas el contenido puede no caber; así se desplaza.
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp),       // Campos separados 10 dp.
+                modifier = Modifier.verticalScroll(rememberScrollState())
+            ) {
 
                 // Aviso si se perdió la conexión con el diálogo abierto: el botón queda bloqueado.
                 if (estadoConexion != EstadoConexion.EN_LINEA) {
@@ -253,14 +293,28 @@ fun OperacionDialog(
                 }
 
                 if (esPago) {
-                    // ---------- PAGO: servicio + contrato + CONSULTA de la factura ----------
+                    // ---------- PAGO: ¿por código de contrato o por cédula? ----------
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        FilterChip(
+                            selected = !porCedula,
+                            onClick = { porCedula = false; factura = null; errorExtra = null },
+                            label = { Text("Por contrato") }
+                        )
+                        FilterChip(
+                            selected = porCedula,
+                            onClick = { porCedula = true; factura = null; errorExtra = null },
+                            label = { Text("Por cédula") }
+                        )
+                    }
+                    // ---------- PAGO: servicio + contrato (o cédula) + CONSULTA de la factura ----------
                     // Una ficha (FilterChip) por servicio; la elegida queda marcada y muestra su ícono.
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         SERVICIOS.forEach { opcion ->
                             val elegido = servicio == opcion    // ¿Es el servicio seleccionado?
                             FilterChip(
                                 selected = elegido,
-                                onClick = { servicio = opcion; factura = null; errorExtra = null },   // Cambiar servicio invalida la consulta.
+                                // Cambiar servicio invalida la consulta (y la lista de la cédula).
+                                onClick = { servicio = opcion; factura = null; facturasCedula = null; errorExtra = null },
                                 label = { Text(opcion, fontSize = 12.sp, maxLines = 1) },
                                 // leadingIcon: ícono a la izquierda solo en la ficha elegida (null = sin ícono).
                                 leadingIcon = if (elegido) {
@@ -269,7 +323,29 @@ fun OperacionDialog(
                             )
                         }
                     }
-                    OutlinedTextField(
+                    if (porCedula) {
+                        // ---------- POR CÉDULA: escribir la cédula y buscar ----------
+                        OutlinedTextField(
+                            value = cedula,
+                            // Solo dígitos y como máximo 10 (filter + take).
+                            onValueChange = { cedula = it.filter { c -> c.isDigit() }.take(10); facturasCedula = null; factura = null; errorExtra = null },
+                            label = { Text("Cédula del titular") },
+                            placeholder = { Text("Ej. 1712345675") },
+                            singleLine = true,
+                            isError = errorExtra != null,
+                            supportingText = errorExtra?.let { { Text(it) } },
+                            trailingIcon = {
+                                if (consultando) CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                                else IconButton(onClick = { buscarPorCedula() }) { Icon(Icons.Filled.Search, contentDescription = "Buscar facturas") }
+                            },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Search),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        // Lista de facturas de esa cédula: las pendientes se pueden TOCAR para elegirlas.
+                        facturasCedula?.forEach { f ->
+                            FilaFacturaCedula(f, elegida = factura?.codigo == f.codigo, onElegir = { factura = f; errorExtra = null })
+                        }
+                    } else OutlinedTextField(
                         value = contrato,
                         // Al cambiar el contrato se borra la factura anterior (hay que volver a consultar).
                         onValueChange = { contrato = it.uppercase(); factura = null; errorExtra = null },
@@ -289,8 +365,8 @@ fun OperacionDialog(
                             .fillMaxWidth()
                             .focusRequester(focoInicial)
                     )
-                    // Tarjeta con la factura consultada.
-                    factura?.let { f -> TarjetaFactura(f) }
+                    // Tarjeta con la factura consultada (en el modo cédula ya se ve resaltada en la lista).
+                    if (!porCedula) factura?.let { f -> TarjetaFactura(f) }
                 }
             }
         },
@@ -304,6 +380,40 @@ fun OperacionDialog(
         dismissButton = { TextButton(onClick = onCancelar) { Text("Cancelar") } },  // Botón secundario.
         containerColor = MaterialTheme.colorScheme.surface      // Fondo del diálogo según el tema.
     )
+}
+
+// Una factura de la búsqueda por cédula: mes, código, monto y estado (PENDIENTE en rojo / PAGADA en verde).
+// Solo las pendientes se pueden tocar; la elegida se resalta con un borde azul.
+@Composable
+private fun FilaFacturaCedula(factura: Factura, elegida: Boolean, onElegir: () -> Unit) {
+    val colorEstado = if (factura.pagado) VerdeIngreso else RojoEgreso
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (elegida) AzulTarjetaClaro.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceVariant)
+            .border(2.dp, if (elegida) AzulTarjetaClaro else Color.Transparent, RoundedCornerShape(12.dp))
+            .clickable(enabled = !factura.pagado, onClick = onElegir)    // Una pagada no se puede elegir.
+            .padding(10.dp)
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(factura.periodo ?: "Sin periodo", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+            Text("Contrato ${factura.codigo} · ${factura.titular}", fontSize = 12.sp, color = Color.Gray)
+            // Si está pagada: cuándo y desde qué cuenta.
+            if (factura.pagado) {
+                Text(
+                    "Pagada" + (factura.fechaPago?.let { " el ${formatearFecha(it)}" } ?: "") +
+                        (factura.pagadoPor?.let { " (cuenta $it)" } ?: ""),
+                    fontSize = 11.sp, color = Color.Gray
+                )
+            }
+        }
+        Column(horizontalAlignment = Alignment.End) {
+            Text(formatearMonto(factura.monto), fontWeight = FontWeight.Bold)
+            Text(if (factura.pagado) "PAGADA" else "PENDIENTE", color = colorEstado, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+        }
+    }
 }
 
 // Muestra la factura: titular, monto y si ya está pagada.

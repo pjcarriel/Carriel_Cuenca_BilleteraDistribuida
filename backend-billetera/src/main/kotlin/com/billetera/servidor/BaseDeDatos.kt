@@ -14,6 +14,11 @@ private val log = LoggerFactory.getLogger("BaseDeDatos")
 // Contraseña de los usuarios de DEMOSTRACIÓN (documentada en el README). Los usuarios reales eligen la suya.
 const val PASSWORD_DEMO = "demo123"
 
+// Cédulas FICTICIAS de los titulares de demostración (válidas según el algoritmo, ver Cedula.kt).
+const val CEDULA_PAMELA = "1712345675"
+const val CEDULA_USUARIO_A = "0901234567"
+const val CEDULA_USUARIO_B = "0102030400"
+
 // Acceso a MySQL. "object" = una sola instancia para todo el servidor.
 object BaseDeDatos {
 
@@ -124,6 +129,14 @@ object BaseDeDatos {
                     )
                     """.trimIndent()
                 )
+                // MIGRACIÓN (Fase 8): cada factura sabe de QUÉ CÉDULA es y de QUÉ MES (periodo).
+                // Así se pueden buscar las facturas de una persona por su cédula.
+                if (!existeColumna(con, "contratos", "cedula")) {
+                    st.executeUpdate("ALTER TABLE contratos ADD COLUMN cedula VARCHAR(10) NULL, ADD COLUMN periodo VARCHAR(20) NULL")
+                    // Índice: la búsqueda por cédula no tiene que recorrer toda la tabla.
+                    st.executeUpdate("CREATE INDEX idx_contratos_cedula ON contratos (cedula)")
+                    log.info("Migración: columnas contratos.cedula y contratos.periodo agregadas")
+                }
                 // Cuentas de demostración (INSERT IGNORE = si ya existen, no hace nada).
                 // La cuenta 9999 (laboratorio) tiene saldo alto para lanzar muchas transferencias en la demo.
                 st.executeUpdate(
@@ -148,6 +161,33 @@ object BaseDeDatos {
                         ('NET2026', 'INTERNET', 'Pamela Carriel', 25.00),
                         ('NET2027', 'INTERNET', 'Pamela Carriel', 25.00),
                         ('NET3001', 'INTERNET', 'Usuario Postman A', 30.00)
+                    """.trimIndent()
+                )
+                // Cédula y mes de las facturas de ejemplo (solo si todavía no tienen: "cedula IS NULL").
+                // Las cédulas son FICTICIAS: cumplen el algoritmo de validación, pero no son de personas reales.
+                val datosDemo = listOf(
+                    Triple("445566", CEDULA_PAMELA, "Septiembre 2026"), Triple("445567", CEDULA_PAMELA, "Octubre 2026"),
+                    Triple("778899", CEDULA_PAMELA, "Septiembre 2026"), Triple("778900", CEDULA_PAMELA, "Octubre 2026"),
+                    Triple("NET2026", CEDULA_PAMELA, "Septiembre 2026"), Triple("NET2027", CEDULA_PAMELA, "Octubre 2026"),
+                    Triple("112233", CEDULA_USUARIO_A, "Octubre 2026"), Triple("NET3001", CEDULA_USUARIO_A, "Octubre 2026"),
+                    Triple("334455", CEDULA_USUARIO_B, "Octubre 2026")
+                )
+                con.prepareStatement("UPDATE contratos SET cedula = ?, periodo = ? WHERE codigo = ? AND cedula IS NULL").use { ps ->
+                    datosDemo.forEach { (codigo, cedula, periodo) ->
+                        ps.setString(1, cedula); ps.setString(2, periodo); ps.setString(3, codigo)
+                        ps.addBatch()                           // Se acumulan y se envían juntas (executeBatch).
+                    }
+                    ps.executeBatch()
+                }
+                // Facturas NUEVAS de noviembre (pendientes), para que siempre haya algo que pagar en la demo.
+                st.executeUpdate(
+                    """
+                    INSERT IGNORE INTO contratos (codigo, servicio, titular, monto, cedula, periodo) VALUES
+                        ('445568', 'LUZ', 'Pamela Carriel', 30.40, '$CEDULA_PAMELA', 'Noviembre 2026'),
+                        ('778901', 'AGUA', 'Pamela Carriel', 19.80, '$CEDULA_PAMELA', 'Noviembre 2026'),
+                        ('NET2028', 'INTERNET', 'Pamela Carriel', 25.00, '$CEDULA_PAMELA', 'Noviembre 2026'),
+                        ('112234', 'LUZ', 'Usuario Postman A', 38.90, '$CEDULA_USUARIO_A', 'Noviembre 2026'),
+                        ('334456', 'AGUA', 'Usuario Postman B', 16.20, '$CEDULA_USUARIO_B', 'Noviembre 2026')
                     """.trimIndent()
                 )
             }

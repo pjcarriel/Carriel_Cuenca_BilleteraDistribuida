@@ -203,13 +203,12 @@ object CuentaRepositorio {
             throw datoInvalido("Servicio no válido. Usa: $SERVICIOS_VALIDOS")
         }
         // Solo al PAGAR se agrega " FOR UPDATE": bloquea la fila de la factura hasta el fin de la transacción.
-        val sql = "SELECT codigo, servicio, titular, monto, pagado FROM contratos WHERE codigo = ?" + if (bloquear) " FOR UPDATE" else ""
+        val sql = "SELECT $COLUMNAS_FACTURA FROM contratos WHERE codigo = ?" + if (bloquear) " FOR UPDATE" else ""
         val factura = con.prepareStatement(sql).use { ps ->
             ps.setString(1, codigo)
             ps.executeQuery().use { rs ->
                 if (!rs.next()) throw contratoNoExiste(codigo)
-                ContratoRespuesta(rs.getString("codigo"), rs.getString("servicio"), rs.getString("titular"),
-                    rs.getBigDecimal("monto").toDouble(), rs.getBoolean("pagado"))
+                leerFactura(rs)                                 // Fila -> ContratoRespuesta (Sql.kt).
             }
         }
         if (servicioPedido != null && factura.servicio != servicioPedido) {

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Carpetas que FileProvider puede compartir con otras apps (ver util/CompartirImagen.kt).
+     Solo la subcarpeta "comprobantes" de la caché privada: nada más de la app queda expuesto. -->
+<paths>
+    <cache-path name="comprobantes" path="comprobantes/" />
+</paths>

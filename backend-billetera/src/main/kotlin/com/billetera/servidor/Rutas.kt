@@ -35,6 +35,11 @@ private suspend fun ApplicationCall.sesion(): SesionUsuario {
     return UsuarioRepositorio.validarSesion(token)
 }
 
+// Igual que sesion(), pero además exige que sea el LABORATORIO (la "empresa de servicios").
+// Sin sesión -> 401; con sesión de otra cuenta -> 403 SIN_PERMISO.
+private suspend fun ApplicationCall.sesionLaboratorio(): SesionUsuario =
+    sesion().also { if (it.cuenta != CUENTA_LABORATORIO) throw sinPermiso() }
+
 // Rutas del servidor.
 // ROUTING de Ktor: cada get("/ruta") o post("/ruta") asocia un MÉTODO HTTP + una RUTA con el bloque
 // que la atiende. Cada bloque corre en una CORRUTINA propia, así que muchas peticiones se atienden
@@ -132,7 +137,36 @@ fun Application.configurarRutas() {
         post("/pagar-servicio") {
             val sesion = call.sesion()
             val req = call.receive<PagoServicioRequest>()
-            call.respond(CuentaRepositorio.pagarServicio(sesion.cuenta, req.servicio, req.contrato))
+            val respuesta = CuentaRepositorio.pagarServicio(sesion.cuenta, req.servicio, req.contrato)
+            // Tiempo real: el panel de servicios del laboratorio se actualiza solo ("Pagada").
+            NotificadorWebSocket.avisarLaboratorio(
+                EventoAviso("FACTURAS_ACTUALIZADAS", "La cuenta ${sesion.cuenta} pagó ${req.servicio.uppercase()} ${req.contrato.uppercase()}")
+            )
+            call.respond(respuesta)
+        }
+
+        // GET /facturas?cedula=1712345675&servicio=LUZ -> facturas de esa cédula (pendientes primero).
+        get("/facturas") {
+            call.sesion()
+            val cedula = call.request.queryParameters["cedula"] ?: throw datoInvalido("Falta la cédula")
+            val servicio = call.request.queryParameters["servicio"] ?: throw datoInvalido("Falta el servicio")
+            call.respond(ServiciosRepositorio.porCedula(cedula, servicio))
+        }
+
+        // ===================== ADMINISTRACIÓN DE SERVICIOS (solo laboratorio) =====================
+
+        // GET /admin/facturas?estado=PENDIENTES&servicio=LUZ -> todas las facturas (con filtros opcionales).
+        get("/admin/facturas") {
+            call.sesionLaboratorio()
+            call.respond(ServiciosRepositorio.listar(call.request.queryParameters["estado"], call.request.queryParameters["servicio"]))
+        }
+
+        // POST /admin/facturas -> crea una factura pendiente (201 Created).
+        post("/admin/facturas") {
+            call.sesionLaboratorio()
+            val creada = ServiciosRepositorio.crear(call.receive<NuevaFacturaRequest>())
+            NotificadorWebSocket.avisarLaboratorio(EventoAviso("FACTURAS_ACTUALIZADAS", "Nueva factura ${creada.servicio} ${creada.codigo}"))
+            call.respond(HttpStatusCode.Created, creada)
         }
 
         // WebSocket  ws://localhost:8090/ws   (cabecera Authorization: Bearer <token>, o ?token=...)
