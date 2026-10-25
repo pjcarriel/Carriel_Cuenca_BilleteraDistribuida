@@ -16,8 +16,6 @@ import androidx.compose.material.icons.automirrored.filled.Logout        // Íco
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong   // Versión que se voltea en idiomas RTL.
 import androidx.compose.material.icons.filled.ChevronLeft                // Flecha izquierda del filtro.
 import androidx.compose.material.icons.filled.ChevronRight               // Flecha derecha del filtro.
-import androidx.compose.material.icons.filled.Science                    // Ícono del panel de pruebas.
-import androidx.compose.material.icons.filled.Storefront                 // Ícono de administrar servicios.
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -37,9 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.carriel_cuenca_billeteradistribuida.model.EstadoConexion
 import com.example.carriel_cuenca_billeteradistribuida.model.Movimiento
-import com.example.carriel_cuenca_billeteradistribuida.model.NodosConectados
 import com.example.carriel_cuenca_billeteradistribuida.ui.components.AvisoSinConexion
-import com.example.carriel_cuenca_billeteradistribuida.ui.components.TarjetaNodos
 import com.example.carriel_cuenca_billeteradistribuida.model.TipoOperacion
 import com.example.carriel_cuenca_billeteradistribuida.ui.components.FilaMovimiento
 import com.example.carriel_cuenca_billeteradistribuida.ui.components.PanelAcciones
@@ -68,11 +64,7 @@ fun DashboardScreen(
     procesando: Boolean,                          // true = hay una operación en curso.
     onAccionClick: (TipoOperacion) -> Unit,       // Se tocó un botón de operación (depósito, retiro...).
     onCerrarSesion: () -> Unit,
-    onAbrirPruebas: () -> Unit,
     onVerDetalle: (Movimiento) -> Unit = {},                       // Tocar un movimiento abre su panel de detalle.
-    onAbrirServicios: () -> Unit = {},                             // Laboratorio: administrar servicios.
-    esLaboratorio: Boolean,                       // true = usuario "laboratorio" (ve pruebas y nodos).
-    nodosConectados: NodosConectados? = null,     // Solo se muestra al laboratorio.
     modifier: Modifier = Modifier
 ) {
     // Las operaciones necesitan al servidor: solo se permiten con el túnel EN LÍNEA.
@@ -128,17 +120,10 @@ fun DashboardScreen(
                 Text("Hola, ${nombre.substringBefore(" ")}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text("@$usuario", color = Color.Gray)
             }
-            if (esLaboratorio) {
-                // El laboratorio también es la "empresa de servicios": administra las facturas.
-                IconButton(onClick = onAbrirServicios) { Icon(Icons.Filled.Storefront, contentDescription = "Administrar servicios") }
-                IconButton(onClick = onAbrirPruebas) { Icon(Icons.Filled.Science, contentDescription = "Pruebas de concurrencia") }
-            }
             IconButton(onClick = onCerrarSesion) { Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Cerrar sesión") }
         }
         // Tarjeta azul con el saldo, la cuenta y el estado de conexión.
         TarjetaSaldo(saldo = saldo, cuenta = cuenta, estadoConexion = estadoConexion)
-        // Solo el laboratorio ve cuántos dispositivos (nodos) están conectados al servidor.
-        if (esLaboratorio) TarjetaNodos(nodos = nodosConectados, enLinea = enLinea)
         // Botones de operación: desactivados si hay una operación en curso o no hay conexión.
         PanelAcciones(habilitado = !procesando && enLinea, onAccionClick = onAccionClick)
         // Sin conexión: aviso que explica por qué los botones están bloqueados.
@@ -223,9 +208,7 @@ fun DashboardPreview() {
             movimientos = DatosDePrueba.movimientos,
             procesando = false,
             onAccionClick = { },
-            onCerrarSesion = { },
-            onAbrirPruebas = { },
-            esLaboratorio = true
+            onCerrarSesion = { }
         )
     }
 }

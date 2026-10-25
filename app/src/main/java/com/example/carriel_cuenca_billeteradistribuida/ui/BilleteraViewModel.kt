@@ -19,7 +19,10 @@ import com.example.carriel_cuenca_billeteradistribuida.model.EstadoPruebas
 import com.example.carriel_cuenca_billeteradistribuida.model.Factura
 import com.example.carriel_cuenca_billeteradistribuida.model.Movimiento
 import com.example.carriel_cuenca_billeteradistribuida.model.NodosConectados
+import com.example.carriel_cuenca_billeteradistribuida.model.SERVICIOS_BASE
+import com.example.carriel_cuenca_billeteradistribuida.model.Servicio
 import com.example.carriel_cuenca_billeteradistribuida.model.Solicitud
+import com.example.carriel_cuenca_billeteradistribuida.ui.components.CatalogoServicios
 import com.example.carriel_cuenca_billeteradistribuida.model.TipoPrueba
 import com.example.carriel_cuenca_billeteradistribuida.util.logHilo
 import kotlinx.coroutines.Job
@@ -94,6 +97,7 @@ class BilleteraViewModel(
     // Sincroniza saldo e historial con el servidor y abre el WebSocket.
     // viewModelScope.launch inicia la corrutina en el hilo MAIN; el Repository salta a IO por dentro.
     fun iniciarConexion() {
+        cargarServicios()                                       // Catálogo de servicios (para pagos e íconos).
         viewModelScope.launch {
             logHilo("ViewModel: sincronizando saldo e historial con el servidor")
             when (val resultado = repositorio.sincronizarSaldo()) {
@@ -133,6 +137,30 @@ class BilleteraViewModel(
         val resultado = repositorio.buscarFacturas(cedula, servicio)
         if (resultado is Resultado.Error && resultado.codigoHttp == HTTP_NO_AUTORIZADO) onSesionInvalida(resultado.mensaje)
         return resultado
+    }
+
+    // ---------------- CATÁLOGO DE SERVICIOS ----------------
+    // Empieza con los 3 de siempre (por si no hay conexión) y se reemplaza con el del servidor.
+    private val _servicios = MutableStateFlow(SERVICIOS_BASE)
+    val servicios: StateFlow<List<Servicio>> = _servicios.asStateFlow()
+
+    // Descarga el catálogo (al entrar y después de crear un servicio).
+    fun cargarServicios() {
+        viewModelScope.launch {
+            val r = repositorio.servicios()
+            if (r is Resultado.Exito && r.datos.isNotEmpty()) {
+                _servicios.value = r.datos
+                CatalogoServicios.actualizar(r.datos)           // Para los íconos del historial.
+            }
+        }
+    }
+
+    // Agrega un servicio (solo laboratorio). Si sale bien, recarga el catálogo.
+    suspend fun crearServicio(codigo: String, nombre: String, icono: String): Resultado<Servicio> {
+        val r = repositorio.crearServicio(codigo, nombre, icono)
+        if (r is Resultado.Exito) cargarServicios()
+        if (r is Resultado.Error && r.codigoHttp == HTTP_NO_AUTORIZADO) onSesionInvalida(r.mensaje)
+        return r
     }
 
     // ---------------- ADMINISTRACIÓN DE SERVICIOS (solo laboratorio) ----------------

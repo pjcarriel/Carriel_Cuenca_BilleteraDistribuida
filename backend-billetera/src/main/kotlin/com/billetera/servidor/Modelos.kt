@@ -81,6 +81,14 @@ data class NuevaFacturaRequest(
     val monto: Double
 )
 
+// Un servicio del catálogo: GET /servicios.  {"codigo":"LUZ","nombre":"Luz eléctrica","icono":"RAYO"}
+@Serializable
+data class ServicioRespuesta(val codigo: String, val nombre: String, val icono: String)
+
+// POST /admin/servicios (solo laboratorio): agregar un servicio.  {"codigo":"GAS","nombre":"Gas doméstico","icono":"GAS"}
+@Serializable
+data class NuevoServicioRequest(val codigo: String, val nombre: String, val icono: String)
+
 // Aviso simple por WebSocket (ej. al laboratorio: "FACTURAS_ACTUALIZADAS" cuando alguien paga).
 @Serializable
 data class EventoAviso(val tipo: String, val detalle: String? = null)
@@ -169,4 +177,5 @@ fun usuarioExiste(usuario: String) = ErrorNegocio(HttpStatusCode.Conflict, "USUA
 fun sinPermiso() = ErrorNegocio(HttpStatusCode.Forbidden, "SIN_PERMISO", "Solo el usuario laboratorio puede administrar los servicios")
 // --- 400: cédula que no cumple el algoritmo ecuatoriano ---
 fun cedulaInvalida() = ErrorNegocio(HttpStatusCode.BadRequest, "CEDULA_INVALIDA", "La cédula no es válida")
-fun facturaPagada(codigo: String) =ErrorNegocio(HttpStatusCode.Conflict, "FACTURA_PAGADA", "La factura del contrato $codigo ya fue pagada")
+fun servicioExiste(codigo: String) = ErrorNegocio(HttpStatusCode.Conflict, "SERVICIO_EXISTE", "Ya existe un servicio con el código $codigo")
+fun facturaPagada(codigo: String) = ErrorNegocio(HttpStatusCode.Conflict, "FACTURA_PAGADA", "La factura del contrato $codigo ya fue pagada")

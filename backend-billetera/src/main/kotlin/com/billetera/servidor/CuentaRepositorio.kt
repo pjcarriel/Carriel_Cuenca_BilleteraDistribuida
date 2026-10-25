@@ -8,8 +8,6 @@ import java.math.BigDecimal
 
 private val log = LoggerFactory.getLogger("CuentaRepositorio")
 
-// Servicios básicos permitidos.
-private val SERVICIOS_VALIDOS = setOf("LUZ", "AGUA", "INTERNET")
 
 // Categoría que la app muestra en los pagos de servicio.
 private const val CATEGORIA_SERVICIO = "Servicio Básico"
@@ -199,8 +197,10 @@ object CuentaRepositorio {
     // Lee una factura. Valida que el servicio coincida (un contrato de LUZ no se paga como AGUA).
     private fun leerContrato(con: java.sql.Connection, codigo: String, servicio: String?, bloquear: Boolean): ContratoRespuesta {
         val servicioPedido = servicio?.trim()?.uppercase()
-        if (servicioPedido != null && servicioPedido !in SERVICIOS_VALIDOS) {
-            throw datoInvalido("Servicio no válido. Usa: $SERVICIOS_VALIDOS")
+        // Los servicios válidos salen de la tabla servicios (el laboratorio puede agregar más).
+        val validos = codigosServicio(con)
+        if (servicioPedido != null && servicioPedido !in validos) {
+            throw datoInvalido("Servicio no válido. Usa: $validos")
         }
         // Solo al PAGAR se agrega " FOR UPDATE": bloquea la fila de la factura hasta el fin de la transacción.
         val sql = "SELECT $COLUMNAS_FACTURA FROM contratos WHERE codigo = ?" + if (bloquear) " FOR UPDATE" else ""

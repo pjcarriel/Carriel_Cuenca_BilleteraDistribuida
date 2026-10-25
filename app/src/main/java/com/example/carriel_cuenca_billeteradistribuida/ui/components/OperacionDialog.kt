@@ -4,7 +4,9 @@ package com.example.carriel_cuenca_billeteradistribuida.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import com.example.carriel_cuenca_billeteradistribuida.model.Servicio
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -15,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
@@ -63,8 +66,6 @@ import com.example.carriel_cuenca_billeteradistribuida.ui.theme.RojoEgreso
 import com.example.carriel_cuenca_billeteradistribuida.ui.theme.VerdeIngreso
 import kotlinx.coroutines.launch
 
-// Servicios básicos que se pueden pagar (deben coincidir con los del servidor).
-private val SERVICIOS = listOf("LUZ", "AGUA", "INTERNET")
 
 // EXPRESIONES REGULARES para validar lo que escribe el usuario.
 // Regex("""..."""): las comillas triples evitan tener que escapar las barras "\".
@@ -81,6 +82,7 @@ fun OperacionDialog(
     saldo: Double?,                                             // Saldo actual (null = desconocido).
     estadoConexion: EstadoConexion,                             // Para bloquear el botón sin conexión.
     cuentaPropia: String,                                            // Para impedir transferirse a sí mismo.
+    servicios: List<Servicio>,                                  // Catálogo de servicios (del servidor).
     // "suspend" = función que puede ESPERAR (la respuesta del servidor) sin congelar la pantalla.
     onConsultarFactura: suspend (servicio: String, codigo: String) -> Resultado<Factura>,
     // Busca las facturas de una cédula (pago "Por cédula").
@@ -96,7 +98,7 @@ fun OperacionDialog(
     // "by" permite leerlo y escribirlo como una variable normal (ej. monto = "10").
     var monto by remember { mutableStateOf("") }                // Texto del campo Monto.
     var cuentaDestino by remember { mutableStateOf("") }        // Cuenta a la que se transfiere.
-    var servicio by remember { mutableStateOf(SERVICIOS.first()) }  // Servicio elegido (empieza en LUZ).
+    var servicio by remember { mutableStateOf(servicios.firstOrNull()?.codigo ?: "LUZ") }  // Servicio elegido (el primero).
     var contrato by remember { mutableStateOf("") }             // Código de contrato escrito.
     var errorMonto by remember { mutableStateOf<String?>(null) }  // Error del monto (null = sin error).
     var errorExtra by remember { mutableStateOf<String?>(null) }  // Error de la cuenta destino o del contrato.
@@ -181,6 +183,12 @@ fun OperacionDialog(
         }
     }
 
+    // BÚSQUEDA AUTOMÁTICA: en cuanto la cédula tiene 10 dígitos (o se cambia de servicio con la cédula
+    // ya escrita), se buscan las facturas sin tener que tocar la lupa.
+    LaunchedEffect(porCedula, cedula, servicio) {
+        if (porCedula && cedula.length == 10) buscarPorCedula()
+    }
+
     // Valida y entrega la solicitud.
     fun confirmar() {
         // PAGO: solo se confirma si ya se consultó la factura y no está pagada.
@@ -188,7 +196,7 @@ fun OperacionDialog(
             val f = factura                                     // Copia local: así Kotlin puede hacer "smart cast" (factura es un var).
             // "when" sin argumento: el primer caso verdadero da el mensaje; null = todo bien.
             errorExtra = when {
-                f == null && porCedula -> "Busca la cédula y toca una factura pendiente"
+                f == null && porCedula -> "Toca una de las facturas PENDIENTES de la lista para elegirla"
                 f == null -> "Primero consulta la factura (botón de la lupa)"
                 f.pagado -> "Esta factura ya fue pagada"
                 else -> null
@@ -308,8 +316,9 @@ fun OperacionDialog(
                     }
                     // ---------- PAGO: servicio + contrato (o cédula) + CONSULTA de la factura ----------
                     // Una ficha (FilterChip) por servicio; la elegida queda marcada y muestra su ícono.
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        SERVICIOS.forEach { opcion ->
+                    // Los servicios vienen del CATÁLOGO del servidor; horizontalScroll: si son muchos, se deslizan.
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                        servicios.map { it.codigo }.forEach { opcion ->
                             val elegido = servicio == opcion    // ¿Es el servicio seleccionado?
                             FilterChip(
                                 selected = elegido,
@@ -339,6 +348,8 @@ fun OperacionDialog(
                                 else IconButton(onClick = { buscarPorCedula() }) { Icon(Icons.Filled.Search, contentDescription = "Buscar facturas") }
                             },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Search),
+                            // La tecla "Buscar" del teclado también busca.
+                            keyboardActions = KeyboardActions(onSearch = { buscarPorCedula() }),
                             modifier = Modifier.fillMaxWidth()
                         )
                         // Lista de facturas de esa cédula: las pendientes se pueden TOCAR para elegirlas.

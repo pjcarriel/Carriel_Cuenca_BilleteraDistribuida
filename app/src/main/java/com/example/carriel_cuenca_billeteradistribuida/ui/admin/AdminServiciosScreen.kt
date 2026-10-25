@@ -2,10 +2,14 @@
 package com.example.carriel_cuenca_billeteradistribuida.ui.admin
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -25,6 +29,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -38,9 +43,11 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -48,6 +55,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -65,8 +73,11 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.carriel_cuenca_billeteradistribuida.data.Resultado
 import com.example.carriel_cuenca_billeteradistribuida.model.Factura
+import com.example.carriel_cuenca_billeteradistribuida.model.Servicio
 import com.example.carriel_cuenca_billeteradistribuida.ui.BilleteraViewModel
+import com.example.carriel_cuenca_billeteradistribuida.ui.components.CLAVES_ICONO
 import com.example.carriel_cuenca_billeteradistribuida.ui.components.iconoDeServicio
+import com.example.carriel_cuenca_billeteradistribuida.ui.components.iconoPorClave
 import com.example.carriel_cuenca_billeteradistribuida.ui.formatearFecha
 import com.example.carriel_cuenca_billeteradistribuida.ui.formatearMonto
 import com.example.carriel_cuenca_billeteradistribuida.ui.theme.AzulTarjeta
@@ -79,114 +90,177 @@ import java.time.LocalDate
 import java.time.format.TextStyle
 import java.util.Locale
 
-// Servicios básicos (los mismos que en el servidor).
-private val SERVICIOS = listOf("LUZ", "AGUA", "INTERNET")
-
-// PANEL DE ADMINISTRACIÓN DE SERVICIOS: el laboratorio actúa como la "empresa" de luz, agua e internet.
-//  - Resumen: cuánto falta por cobrar y cuánto se ha recaudado.
-//  - Filtros por estado (pendientes / pagadas) y por servicio.
-//  - Lista de facturas que se ACTUALIZA SOLA (WebSocket) cuando alguien paga desde su celular.
-//  - Botón para crear facturas nuevas (cédula, titular, servicio, periodo y monto).
+// PANEL "SERVICIOS Y FACTURAS": el laboratorio actúa como la EMPRESA de servicios básicos.
+// Dos pestañas:
+//  - FACTURAS: la empresa EMITE cada mes la factura de una persona (por su cédula). Esa persona luego
+//    la ve en "Pagar servicios → Por cédula" y la paga. Aquí se ve quién debe y quién ya pagó,
+//    y la lista se ACTUALIZA SOLA (WebSocket) cuando alguien paga desde su celular.
+//  - SERVICIOS: el catálogo (luz, agua, internet...). Se pueden AGREGAR servicios nuevos (ej. gas).
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AdminServiciosScreen(
-    viewModel: BilleteraViewModel,      // El mismo ViewModel del dashboard (misma sesión y WebSocket).
+    viewModel: BilleteraViewModel,      // El mismo ViewModel del inicio (misma sesión y WebSocket).
     onVolver: () -> Unit,
     onActividad: () -> Unit             // Usar el panel cuenta como actividad (no se cierra la sesión).
 ) {
     val admin by viewModel.admin.collectAsStateWithLifecycle()
+    val servicios by viewModel.servicios.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
-    var mostrarNueva by remember { mutableStateOf(false) }     // Diálogo "Nueva factura".
-    // Estado de desplazamiento de la lista: al recargar volvemos ARRIBA (ahí están las pendientes).
-    // (Sin esto, LazyColumn conserva la posición de la factura que estaba visible.)
+    val alcance = rememberCoroutineScope()
+    var pestana by remember { mutableIntStateOf(0) }            // 0 = Facturas, 1 = Servicios.
+    var mostrarNuevaFactura by remember { mutableStateOf(false) }
+    var mostrarNuevoServicio by remember { mutableStateOf(false) }
+    // Al recargar la lista volvemos ARRIBA (ahí están las pendientes).
     val estadoLista = rememberLazyListState()
     LaunchedEffect(admin.facturas) { estadoLista.scrollToItem(0) }
 
-    // Al abrir: cargar la lista. Al salir (onDispose): avisar al ViewModel para que no recargue más.
+    // Al abrir: cargar las facturas. Al salir (onDispose): avisar al ViewModel para que no recargue más.
     LaunchedEffect(Unit) { viewModel.cargarFacturasAdmin() }
     DisposableEffect(Unit) { onDispose { viewModel.cerrarAdmin() } }
-    // Avisos en tiempo real (alguien pagó): se muestran abajo. La lista ya se recarga en el ViewModel.
+    // Avisos en tiempo real (alguien pagó o se emitió una factura). La lista ya se recarga en el ViewModel.
     LaunchedEffect(Unit) {
         viewModel.avisosFacturas.collect { detalle -> onActividad(); snackbar.showSnackbar("🔔 $detalle") }
     }
 
-    // Resumen calculado a partir de la lista que se está viendo.
     val pendientes = admin.facturas.filter { !it.pagado }
     val pagadas = admin.facturas.filter { it.pagado }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Administrar servicios") },
+                title = { Text("Servicios y facturas") },
                 navigationIcon = { IconButton(onClick = onVolver) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Volver") } },
-                actions = { IconButton(onClick = { onActividad(); viewModel.cargarFacturasAdmin() }) { Icon(Icons.Filled.Refresh, contentDescription = "Recargar") } }
+                actions = {
+                    IconButton(onClick = { onActividad(); viewModel.cargarFacturasAdmin(); viewModel.cargarServicios() }) {
+                        Icon(Icons.Filled.Refresh, contentDescription = "Recargar")
+                    }
+                }
             )
         },
         snackbarHost = { SnackbarHost(snackbar) },
-        // Botón flotante abajo a la derecha para crear una factura.
+        // El botón flotante cambia según la pestaña.
         floatingActionButton = {
             ExtendedFloatingActionButton(
-                onClick = { onActividad(); mostrarNueva = true },
+                onClick = { onActividad(); if (pestana == 0) mostrarNuevaFactura = true else mostrarNuevoServicio = true },
                 icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-                text = { Text("Nueva factura") }
+                text = { Text(if (pestana == 0) "Emitir factura" else "Nuevo servicio") }
             )
         }
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
+            // Pestañas.
+            PrimaryTabRow(selectedTabIndex = pestana) {
+                Tab(selected = pestana == 0, onClick = { pestana = 0 }, text = { Text("Facturas") })
+                Tab(selected = pestana == 1, onClick = { pestana = 1 }, text = { Text("Servicios (${servicios.size})") })
+            }
             if (admin.cargando) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
 
-            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                // ---------- RESUMEN ----------
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Resumen("Por cobrar", pendientes.sumOf { it.monto }, "${pendientes.size} pendientes", RojoEgreso, Modifier.weight(1f))
-                    Resumen("Recaudado", pagadas.sumOf { it.monto }, "${pagadas.size} pagadas", VerdeIngreso, Modifier.weight(1f))
-                }
-                // ---------- FILTROS (horizontalScroll: si no caben, se deslizan a los lados) ----------
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
-                    listOf(null to "Todas", "PENDIENTES" to "Pendientes", "PAGADAS" to "Pagadas").forEach { (valor, texto) ->
-                        FilterChip(selected = admin.estado == valor, onClick = { onActividad(); viewModel.cargarFacturasAdmin(estado = valor) },
-                            label = { Text(texto) })
+            if (pestana == 0) {
+                // ==================== PESTAÑA FACTURAS ====================
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Explicacion(
+                        "Aquí la empresa EMITE las facturas de cada mes. El cliente las ve al buscar su cédula en " +
+                            "\"Pagar servicios → Por cédula\" y, cuando paga, la factura pasa a PAGADA aquí mismo."
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Resumen("Por cobrar", pendientes.sumOf { it.monto }, "${pendientes.size} pendientes", RojoEgreso, Modifier.weight(1f))
+                        Resumen("Recaudado", pagadas.sumOf { it.monto }, "${pagadas.size} pagadas", VerdeIngreso, Modifier.weight(1f))
                     }
+                    // Filtros (horizontalScroll: si no caben, se deslizan a los lados).
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                        listOf(null to "Todas", "PENDIENTES" to "Pendientes", "PAGADAS" to "Pagadas").forEach { (valor, texto) ->
+                            FilterChip(selected = admin.estado == valor, onClick = { onActividad(); viewModel.cargarFacturasAdmin(estado = valor) },
+                                label = { Text(texto) })
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                        FilterChip(selected = admin.servicio == null, onClick = { onActividad(); viewModel.cargarFacturasAdmin(servicio = null) },
+                            label = { Text("Todos") })
+                        servicios.forEach { s ->
+                            FilterChip(
+                                selected = admin.servicio == s.codigo,
+                                onClick = { onActividad(); viewModel.cargarFacturasAdmin(servicio = s.codigo) },
+                                label = { Text(s.codigo) },
+                                leadingIcon = { Icon(iconoPorClave(s.icono), contentDescription = null, modifier = Modifier.size(16.dp)) }
+                            )
+                        }
+                    }
+                    admin.error?.let { Text(it, color = RojoEgreso, fontSize = 13.sp) }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
-                    FilterChip(selected = admin.servicio == null, onClick = { onActividad(); viewModel.cargarFacturasAdmin(servicio = null) },
-                        label = { Text("Todos") })
-                    SERVICIOS.forEach { s ->
-                        FilterChip(
-                            selected = admin.servicio == s,
-                            onClick = { onActividad(); viewModel.cargarFacturasAdmin(servicio = s) },
-                            label = { Text(s) },
-                            leadingIcon = { Icon(iconoDeServicio(s), contentDescription = null, modifier = Modifier.size(16.dp)) }
+                // contentPadding inferior: el último elemento no queda tapado por el botón flotante.
+                LazyColumn(
+                    state = estadoLista,
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 96.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    if (!admin.cargando && admin.facturas.isEmpty()) {
+                        item { Text("No hay facturas con estos filtros", color = Color.Gray, modifier = Modifier.padding(top = 24.dp)) }
+                    }
+                    items(admin.facturas, key = { it.codigo }) { f -> TarjetaFacturaAdmin(f) }
+                }
+            } else {
+                // ==================== PESTAÑA SERVICIOS ====================
+                LazyColumn(
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    item {
+                        Explicacion(
+                            "Catálogo de servicios que se pueden facturar y pagar. Si agregas uno nuevo (ej. gas), " +
+                                "aparece enseguida en \"Emitir factura\" y en el pago de servicios de los clientes."
                         )
                     }
+                    items(servicios, key = { it.codigo }) { s ->
+                        // Cuántas facturas tiene este servicio (de la lista cargada).
+                        val total = admin.facturas.count { it.servicio == s.codigo }
+                        TarjetaServicio(s, total)
+                    }
                 }
-                admin.error?.let { Text(it, color = RojoEgreso, fontSize = 13.sp) }
-            }
-
-            // ---------- LISTA DE FACTURAS ----------
-            // contentPadding inferior: el último elemento no queda tapado por el botón flotante.
-            LazyColumn(
-                state = estadoLista,
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 96.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                if (!admin.cargando && admin.facturas.isEmpty()) {
-                    item { Text("No hay facturas con estos filtros", color = Color.Gray, modifier = Modifier.padding(top = 24.dp)) }
-                }
-                items(admin.facturas, key = { it.codigo }) { f -> TarjetaFacturaAdmin(f) }
             }
         }
     }
 
-    if (mostrarNueva) {
-        NuevaFacturaDialog(
+    if (mostrarNuevaFactura) {
+        // Titulares conocidos por cédula: al escribir una cédula que ya tiene facturas, el nombre se completa solo.
+        val titulares = admin.facturas.mapNotNull { f -> f.cedula?.let { it to f.titular } }.toMap()
+        EmitirFacturaDialog(
+            servicios = servicios,
+            titularesConocidos = titulares,
             onCrear = viewModel::crearFactura,
             onActividad = onActividad,
-            // Al crearla se cierra el diálogo; el aviso "Nueva factura ..." llega solo por WebSocket.
-            onCreada = { mostrarNueva = false },
-            onCancelar = { mostrarNueva = false }
+            // Al emitirla se cierra el diálogo; el aviso "Nueva factura ..." llega solo por WebSocket.
+            onCreada = { mostrarNuevaFactura = false },
+            onCancelar = { mostrarNuevaFactura = false }
         )
+    }
+    if (mostrarNuevoServicio) {
+        NuevoServicioDialog(
+            onCrear = viewModel::crearServicio,
+            onActividad = onActividad,
+            onCreado = { s ->
+                mostrarNuevoServicio = false
+                alcance.launch { snackbar.showSnackbar("✔ Servicio ${s.nombre} (${s.codigo}) agregado") }
+            },
+            onCancelar = { mostrarNuevoServicio = false }
+        )
+    }
+}
+
+// Caja de ayuda con un ícono de información: explica para qué sirve cada pestaña.
+@Composable
+private fun Explicacion(texto: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(AzulTarjetaClaro.copy(alpha = 0.12f))
+            .padding(10.dp)
+    ) {
+        Icon(Icons.Filled.Info, contentDescription = null, tint = AzulTarjetaClaro, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(texto, fontSize = 12.sp)
     }
 }
 
@@ -202,20 +276,25 @@ private fun Resumen(titulo: String, monto: Double, detalle: String, color: Color
     }
 }
 
-// Tarjeta de UNA factura en el panel: servicio, titular, cédula, mes, contrato, monto y estado.
+// Círculo azul con el ícono de un servicio.
+@Composable
+private fun CirculoServicio(icono: androidx.compose.ui.graphics.vector.ImageVector) {
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(42.dp)
+            .clip(CircleShape)
+            .background(Brush.linearGradient(listOf(AzulTarjeta, AzulTarjetaClaro)))
+    ) { Icon(icono, contentDescription = null, tint = Color.White) }
+}
+
+// Tarjeta de UNA factura: servicio, titular, cédula, mes, contrato, monto y estado.
 @Composable
 private fun TarjetaFacturaAdmin(f: Factura) {
     val colorEstado = if (f.pagado) VerdeIngreso else RojoEgreso
     Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(12.dp)) {
-            // Ícono del servicio en un círculo azul.
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .size(42.dp)
-                    .clip(CircleShape)
-                    .background(Brush.linearGradient(listOf(AzulTarjeta, AzulTarjetaClaro)))
-            ) { Icon(iconoDeServicio(f.servicio), contentDescription = f.servicio, tint = Color.White) }
+            CirculoServicio(iconoDeServicio(f.servicio))
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(f.titular, fontWeight = FontWeight.SemiBold)
@@ -244,6 +323,22 @@ private fun TarjetaFacturaAdmin(f: Factura) {
     }
 }
 
+// Tarjeta de UN servicio del catálogo: ícono, nombre, código y cuántas facturas tiene.
+@Composable
+private fun TarjetaServicio(s: Servicio, facturas: Int) {
+    Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(12.dp)) {
+            CirculoServicio(iconoPorClave(s.icono))
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(s.nombre, fontWeight = FontWeight.SemiBold)
+                Text("Código ${s.codigo}", fontSize = 12.sp, color = Color.Gray)
+            }
+            Text("$facturas facturas", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
 // Mes actual en español con mayúscula inicial (ej. "Octubre 2026"): valor inicial del periodo.
 private fun periodoActual(): String {
     val hoy = LocalDate.now()
@@ -251,9 +346,12 @@ private fun periodoActual(): String {
     return mes.replaceFirstChar { it.uppercase() } + " " + hoy.year
 }
 
-// DIÁLOGO "NUEVA FACTURA": valida los datos aquí (cédula con el algoritmo, monto) y la crea en el servidor.
+// DIÁLOGO "EMITIR FACTURA": la empresa le cobra a una persona (por su cédula) el servicio de un mes.
+// Valida aquí la cédula (algoritmo) y el monto; el servidor genera el código de contrato.
 @Composable
-private fun NuevaFacturaDialog(
+private fun EmitirFacturaDialog(
+    servicios: List<Servicio>,
+    titularesConocidos: Map<String, String>,    // Cédula -> nombre (de facturas anteriores).
     onCrear: suspend (cedula: String, titular: String, servicio: String, periodo: String, monto: Double) -> Resultado<Factura>,
     onActividad: () -> Unit,
     onCreada: (Factura) -> Unit,
@@ -261,7 +359,7 @@ private fun NuevaFacturaDialog(
 ) {
     var cedula by remember { mutableStateOf("") }
     var titular by remember { mutableStateOf("") }
-    var servicio by remember { mutableStateOf(SERVICIOS.first()) }
+    var servicio by remember { mutableStateOf(servicios.firstOrNull()?.codigo ?: "LUZ") }
     var periodo by remember { mutableStateOf(periodoActual()) }
     var monto by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
@@ -295,13 +393,22 @@ private fun NuevaFacturaDialog(
     AlertDialog(
         onDismissRequest = onCancelar,
         icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-        title = { Text("Nueva factura") },
+        title = { Text("Emitir factura") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    "Cobra a una persona el servicio de un mes. Ella la verá al buscar su cédula en \"Pagar servicios\".",
+                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
                 OutlinedTextField(
                     value = cedula,
-                    onValueChange = { cedula = it.filter { c -> c.isDigit() }.take(10); error = null },
+                    onValueChange = { nuevo ->
+                        cedula = nuevo.filter { c -> c.isDigit() }.take(10); error = null
+                        // Si ya conocemos a esa persona y el nombre está vacío, lo completamos.
+                        if (titular.isBlank()) titularesConocidos[cedula]?.let { titular = it }
+                    },
                     label = { Text("Cédula del titular") },
+                    placeholder = { Text("Ej. 1712345675") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth()
@@ -309,27 +416,32 @@ private fun NuevaFacturaDialog(
                 OutlinedTextField(
                     value = titular,
                     onValueChange = { titular = it; error = null },
-                    label = { Text("Titular") },
+                    label = { Text("Nombre del titular") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
                     modifier = Modifier.fillMaxWidth()
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    SERVICIOS.forEach { s ->
-                        FilterChip(selected = servicio == s, onClick = { servicio = s }, label = { Text(s, fontSize = 12.sp) })
+                Text("Servicio", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                    servicios.forEach { s ->
+                        FilterChip(
+                            selected = servicio == s.codigo, onClick = { servicio = s.codigo },
+                            label = { Text(s.codigo, fontSize = 12.sp) },
+                            leadingIcon = { Icon(iconoPorClave(s.icono), contentDescription = null, modifier = Modifier.size(16.dp)) }
+                        )
                     }
                 }
                 OutlinedTextField(
                     value = periodo,
                     onValueChange = { periodo = it; error = null },
-                    label = { Text("Periodo (mes)") },
+                    label = { Text("Mes que se cobra") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
                     value = monto,
                     onValueChange = { monto = it.trim(); error = null },
-                    label = { Text("Monto") },
+                    label = { Text("Valor a pagar") },
                     prefix = { Text("$ ") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -341,7 +453,100 @@ private fun NuevaFacturaDialog(
         confirmButton = {
             Button(onClick = { crear() }, enabled = !guardando) {
                 if (guardando) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
-                else Text("Crear factura")
+                else Text("Emitir")
+            }
+        },
+        dismissButton = { TextButton(onClick = onCancelar) { Text("Cancelar") } }
+    )
+}
+
+// Código sugerido a partir del nombre: solo letras, sin tildes, en mayúsculas y hasta 10 (ej. "Gas doméstico" -> "GAS").
+private fun codigoSugerido(nombre: String): String {
+    val sinTildes = java.text.Normalizer.normalize(nombre, java.text.Normalizer.Form.NFD).replace(Regex("\\p{M}"), "")
+    return sinTildes.trim().substringBefore(" ").uppercase().filter { it in 'A'..'Z' }.take(10)
+}
+
+// DIÁLOGO "NUEVO SERVICIO": nombre, código y el ícono con que se mostrará en la app.
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun NuevoServicioDialog(
+    onCrear: suspend (codigo: String, nombre: String, icono: String) -> Resultado<Servicio>,
+    onActividad: () -> Unit,
+    onCreado: (Servicio) -> Unit,
+    onCancelar: () -> Unit
+) {
+    var nombre by remember { mutableStateOf("") }
+    var codigo by remember { mutableStateOf("") }
+    var codigoEditado by remember { mutableStateOf(false) }     // Si el usuario lo cambió a mano, no lo pisamos.
+    var icono by remember { mutableStateOf("OTRO") }
+    var error by remember { mutableStateOf<String?>(null) }
+    var guardando by remember { mutableStateOf(false) }
+    val alcance = rememberCoroutineScope()
+
+    LaunchedEffect(nombre, codigo, icono) { onActividad() }
+
+    fun crear() {
+        error = when {
+            nombre.trim().length < 3 -> "Escribe el nombre del servicio"
+            !Regex("^[A-Z]{3,10}$").matches(codigo) -> "El código debe tener de 3 a 10 letras (ej. GAS)"
+            else -> null
+        }
+        if (error != null) return
+        alcance.launch {
+            guardando = true
+            when (val r = onCrear(codigo, nombre.trim(), icono)) {
+                is Resultado.Exito -> onCreado(r.datos)
+                is Resultado.Error -> error = r.mensaje                 // Ej. "Ya existe un servicio con el código GAS".
+            }
+            guardando = false
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onCancelar,
+        icon = { Icon(iconoPorClave(icono), contentDescription = null) },
+        title = { Text("Nuevo servicio") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.verticalScroll(rememberScrollState())) {
+                OutlinedTextField(
+                    value = nombre,
+                    onValueChange = { nombre = it; error = null; if (!codigoEditado) codigo = codigoSugerido(it) },
+                    label = { Text("Nombre (ej. Gas doméstico)") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = codigo,
+                    onValueChange = { codigo = it.uppercase().filter { c -> c in 'A'..'Z' }.take(10); codigoEditado = true; error = null },
+                    label = { Text("Código (3 a 10 letras)") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text("Ícono", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // Rejilla de íconos: el elegido queda marcado con un borde azul.
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CLAVES_ICONO.forEach { clave ->
+                        val elegido = icono == clave
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .background(if (elegido) AzulTarjetaClaro.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant)
+                                .border(2.dp, if (elegido) AzulTarjetaClaro else Color.Transparent, CircleShape)
+                                .clickable { icono = clave }
+                        ) { Icon(iconoPorClave(clave), contentDescription = clave) }
+                    }
+                }
+                error?.let { Text(it, color = RojoEgreso, fontSize = 13.sp) }
+            }
+        },
+        confirmButton = {
+            Button(onClick = { crear() }, enabled = !guardando) {
+                if (guardando) CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = Color.White)
+                else Text("Agregar")
             }
         },
         dismissButton = { TextButton(onClick = onCancelar) { Text("Cancelar") } }

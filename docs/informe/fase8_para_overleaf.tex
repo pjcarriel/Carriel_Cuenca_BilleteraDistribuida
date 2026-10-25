@@ -1,11 +1,12 @@
 % =====================================================================
 % FASE 8 — Texto para pegar en informe_APA7.tex (Overleaf).
 % DÓNDE: justo ANTES de la línea "% ================= RESULTADOS".
-% Las imágenes ya están subidas a la carpeta imagenes/ del proyecto de Overleaf.
+% Imágenes: subir a la carpeta imagenes/ de Overleaf las de docs/evidencias/ que empiezan con "fase8_"
+% (fase8_comprobante_compartido.png, fase8_pago_por_cedula.png, fase8_admin_tiempo_real.png y
+% fase8_pago_gas_cedula.png). Las tres primeras ya estaban subidas.
 % Además (opcional): agregar en la tabla de fases la fila
 %     8 & Comprobantes, pago por cédula y administración de servicios & 24/10/2026 & Completada\\
-% y en la tabla de commits la fila
-%     7d1dd36 & 24/10/2026 & Fase 8: comprobantes, pago por cédula y administración de servicios\\
+% y en la tabla de commits la fila del commit que hagas con estos cambios (código y fecha).
 % =====================================================================
 
 % ================= FASE 8 =================
@@ -23,7 +24,7 @@ La última fase acercó la aplicación a la experiencia de una billetera comerci
     \midrule
     Comprobantes & Sin cambios: el N.º de comprobante es el identificador de la transacción en MySQL & Panel modal de detalle en cada movimiento con el botón Ver comprobante, y comprobante automático al terminar una operación; se comparte como imagen PNG mediante FileProvider\\
     Pago por cédula & Columnas cedula y periodo en la tabla contratos (migración); GET /facturas?cedula=\&servicio= con validación de la cédula & Modo Por cédula en el diálogo de pago: lista de facturas pendientes y pagadas; se elige una y se paga\\
-    Administración de servicios & GET y POST /admin/facturas solo para el laboratorio (403 para otras cuentas); aviso FACTURAS\_ACTUALIZADAS por WebSocket & Panel con resumen, filtros, creación de facturas y actualización en tiempo real\\
+    Administración de servicios & Tabla servicios (catálogo); GET /servicios; GET y POST /admin/facturas y POST /admin/servicios solo para el laboratorio (403 para otras cuentas); aviso FACTURAS\_ACTUALIZADAS por WebSocket & Pantalla de inicio propia del administrador; panel con pestañas Facturas y Servicios: resumen, filtros, emisión de facturas, alta de servicios y actualización en tiempo real\\
     \bottomrule
   \end{tabularx}
   \nota{Elaboración propia.}
@@ -53,12 +54,19 @@ Las facturas de servicios básicos ahora registran la cédula del titular y el m
 
 \subsubsection{Administración de Servicios en Tiempo Real}
 
-El usuario laboratorio dispone de un panel de administración con el total por cobrar y el total recaudado, filtros por estado y por servicio, y un formulario para crear facturas; el servidor genera el código de contrato y rechaza con el código 403 cualquier intento de administración desde otra cuenta. Cuando un cliente paga una factura desde cualquier dispositivo, el servidor envía al laboratorio el aviso FACTURAS\_ACTUALIZADAS por WebSocket; el panel recarga la lista sin intervención del usuario y muestra quién pagó (Figura~\ref{fig:admintiemporeal}). Este comportamiento extiende al dominio de los servicios el mismo mecanismo de notificación en tiempo real usado para las transferencias.
+El usuario laboratorio no es un cliente sino el administrador del sistema: representa a la empresa de servicios básicos y al laboratorio de pruebas. Por ello tiene una pantalla de inicio propia, sin saldo ni botones de operación, que muestra el estado del túnel WebSocket, los nodos conectados, el total por cobrar y el total recaudado, y dos accesos: Servicios y facturas, y Pruebas de concurrencia. El panel de servicios tiene dos pestañas. En Facturas, la empresa emite cada mes la factura de una persona indicando su cédula, el servicio, el mes y el valor; el servidor genera el código de contrato y esa persona la encuentra después al buscar su cédula en el pago de servicios. En Servicios se administra el catálogo, que pasó de estar fijo en el código a una tabla de MySQL: el laboratorio puede agregar servicios nuevos, como gas o telefonía, con un código y un ícono, y estos aparecen de inmediato al emitir facturas y en el diálogo de pago de los clientes (Figura~\ref{fig:pagogas}). El servidor rechaza con el código 403 cualquier intento de administración desde otra cuenta. Cuando un cliente paga una factura desde cualquier dispositivo, el servidor envía al laboratorio el aviso FACTURAS\_ACTUALIZADAS por WebSocket; el panel recarga la lista sin intervención del usuario y muestra quién pagó (Figura~\ref{fig:admintiemporeal}). Este comportamiento extiende al dominio de los servicios el mismo mecanismo de notificación en tiempo real usado para las transferencias.
 
 \begin{figure}[H]
   \centering
   \caption{Panel de Administración Actualizado en Tiempo Real}\label{fig:admintiemporeal}
   \includegraphics[height=0.5\textheight,keepaspectratio]{imagenes/fase8_admin_tiempo_real.png}
   \nota{El aviso inferior y la factura marcada como pagada aparecieron sin recargar, cuando la cuenta 1002 pagó desde otro cliente.}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \caption{Factura de un Servicio Nuevo Encontrada por el Cliente}\label{fig:pagogas}
+  \includegraphics[height=0.5\textheight,keepaspectratio]{imagenes/fase8_pago_gas_cedula.png}
+  \nota{El laboratorio agregó el servicio GAS y emitió una factura; el cliente la encuentra al buscar su cédula en el diálogo de pago.}
 \end{figure}
 

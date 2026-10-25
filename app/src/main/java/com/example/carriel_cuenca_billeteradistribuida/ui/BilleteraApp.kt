@@ -26,6 +26,7 @@ import com.example.carriel_cuenca_billeteradistribuida.model.EstadoOperacion
 import com.example.carriel_cuenca_billeteradistribuida.model.Movimiento
 import com.example.carriel_cuenca_billeteradistribuida.model.TipoOperacion
 import com.example.carriel_cuenca_billeteradistribuida.ui.admin.AdminServiciosScreen
+import com.example.carriel_cuenca_billeteradistribuida.ui.admin.LaboratorioScreen
 import com.example.carriel_cuenca_billeteradistribuida.ui.components.ComprobanteDialog
 import com.example.carriel_cuenca_billeteradistribuida.ui.components.DetalleMovimientoSheet
 import com.example.carriel_cuenca_billeteradistribuida.ui.components.OperacionDialog
@@ -56,6 +57,8 @@ fun BilleteraApp(
     val historial by viewModel.historial.collectAsStateWithLifecycle()             // Movimientos (desde Room).
     val estado by viewModel.estado.collectAsStateWithLifecycle()                   // Resultado de la última operación.
     val nodosConectados by viewModel.nodosConectados.collectAsStateWithLifecycle()
+    val servicios by viewModel.servicios.collectAsStateWithLifecycle()                // Catálogo de servicios.
+    val admin by viewModel.admin.collectAsStateWithLifecycle()                         // Facturas (laboratorio).
 
     // Estado propio de la pantalla (remember = se conserva entre redibujados).
     // dialogoAbierto: qué operación se está haciendo (depósito, retiro...) o null = ningún diálogo.
@@ -166,24 +169,38 @@ fun BilleteraApp(
             // Mientras una operación espera al servidor: barra de progreso arriba y botones desactivados.
             val procesando = estado is EstadoOperacion.Procesando
             if (procesando) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            // El Dashboard solo recibe DATOS y lambdas: no conoce al ViewModel.
-            DashboardScreen(
-                nombre = sesion.nombre,
-                usuario = sesion.usuario,
-                cuenta = sesion.cuenta,
-                saldo = saldo,
-                estadoConexion = estadoConexion,
-                movimientos = historial,
-                procesando = procesando,
-                onAccionClick = { tipo -> dialogoAbierto = tipo },        // Abre el diálogo de esa operación.
-                onCerrarSesion = onCerrarSesion,
-                onAbrirPruebas = { mostrarPruebas = true },
-                onVerDetalle = { detalle = it },                          // Abre el panel de detalle.
-                onAbrirServicios = { mostrarServicios = true },
-                esLaboratorio = sesion.usuario == "laboratorio",          // Solo este usuario ve pruebas y nodos.
-                nodosConectados = nodosConectados,
-                modifier = Modifier.fillMaxSize()
-            )
+            // El LABORATORIO no es un cliente: es el ADMINISTRADOR del sistema (empresa de servicios y
+            // pruebas). Por eso ve su propia pantalla de inicio, sin saldo ni botones de cliente.
+            if (sesion.usuario == "laboratorio") {
+                // Al mostrar el inicio: cargar TODAS las facturas para el resumen de cobros
+                // (sin filtros; y queda "abierto", así se actualiza solo cuando alguien paga).
+                LaunchedEffect(Unit) { viewModel.cargarFacturasAdmin(estado = null, servicio = null) }
+                LaboratorioScreen(
+                    estadoConexion = estadoConexion,
+                    nodosConectados = nodosConectados,
+                    admin = admin,
+                    servicios = servicios,
+                    onAbrirServicios = { mostrarServicios = true },
+                    onAbrirPruebas = { mostrarPruebas = true },
+                    onCerrarSesion = onCerrarSesion,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                // El Dashboard solo recibe DATOS y lambdas: no conoce al ViewModel.
+                DashboardScreen(
+                    nombre = sesion.nombre,
+                    usuario = sesion.usuario,
+                    cuenta = sesion.cuenta,
+                    saldo = saldo,
+                    estadoConexion = estadoConexion,
+                    movimientos = historial,
+                    procesando = procesando,
+                    onAccionClick = { tipo -> dialogoAbierto = tipo },    // Abre el diálogo de esa operación.
+                    onCerrarSesion = onCerrarSesion,
+                    onVerDetalle = { detalle = it },                      // Abre el panel de detalle.
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
         }
     }
 
@@ -194,6 +211,7 @@ fun BilleteraApp(
             saldo = saldo,
             estadoConexion = estadoConexion,
             cuentaPropia = sesion.cuenta,
+            servicios = servicios,                                  // Catálogo del servidor.
             // Referencia a la función suspend del ViewModel: el diálogo la llama y espera la factura.
             onConsultarFactura = viewModel::consultarFactura,
             onBuscarFacturas = viewModel::buscarFacturas,           // Pago "Por cédula".

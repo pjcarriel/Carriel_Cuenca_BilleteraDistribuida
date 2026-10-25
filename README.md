@@ -20,7 +20,7 @@ distribuido**, con un servidor propio en Kotlin (Ktor) y base de datos MySQL.
   reales de servicios y un **panel de pruebas de concurrencia**.
 - **Comprobantes** de cada operación, que se pueden **compartir como imagen** (WhatsApp, correo...).
 - **Pago de servicios por cédula** (validación de la cédula ecuatoriana, módulo 10).
-- **Panel de administración de servicios** (usuario `laboratorio`): crear facturas y ver los pagos
+- **Panel de administración** (usuario `laboratorio`, con interfaz propia de administrador): agregar servicios, emitir facturas y ver los pagos
   en tiempo real; además, contador de **nodos conectados**.
 - **Acceso desde cualquier red** con Cloudflare Tunnel (`cloudflared tunnel --url http://localhost:8090`).
 
@@ -94,8 +94,8 @@ También se puede **crear una cuenta nueva** desde la app (recibe $100 de bienve
 Importar `backend-billetera/postman/Billetera.postman_collection.json`. Ejecutar primero un
 **login** (guarda el token solo) y luego las demás peticiones. Endpoints principales:
 `POST /auth/login`, `GET /mi-cuenta`, `POST /depositar`, `POST /retirar`, `POST /transferir`,
-`GET /contratos/{codigo}?servicio=`, `GET /facturas?cedula=&servicio=`, `POST /pagar-servicio`, `WS /ws`.
-Solo `laboratorio` (otras cuentas reciben 403): `GET /admin/facturas?estado=&servicio=`, `POST /admin/facturas`.
+`GET /contratos/{codigo}?servicio=`, `GET /servicios`, `GET /facturas?cedula=&servicio=`, `POST /pagar-servicio`, `WS /ws`.
+Solo `laboratorio` (otras cuentas reciben 403): `GET /admin/facturas?estado=&servicio=`, `POST /admin/facturas`, `POST /admin/servicios`.
 
 Cédulas **ficticias** de demostración (cumplen el algoritmo): `1712345675` (pamela),
 `0901234567` (usuarioa), `0102030400` (usuariob).

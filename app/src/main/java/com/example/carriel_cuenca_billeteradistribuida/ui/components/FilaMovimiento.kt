@@ -16,6 +16,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.LocalAtm
+import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Recycling
+import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.NorthEast
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Savings
@@ -106,9 +110,39 @@ fun iconoDeTipo(tipo: TipoOperacion, servicio: String = ""): ImageVector = when 
 }
 
 // Ícono de cada servicio básico (también lo usa el diálogo de pago).
+// Los servicios que agrega el laboratorio se buscan en el CATÁLOGO descargado del servidor.
 fun iconoDeServicio(servicio: String): ImageVector = when (servicio.uppercase()) {
     "LUZ" -> Icons.Filled.Bolt          // Rayo.
     "AGUA" -> Icons.Filled.WaterDrop    // Gota.
     "INTERNET" -> Icons.Filled.Wifi     // Wifi.
-    else -> Icons.Filled.Receipt        // Factura genérica.
+    else -> iconoPorClave(CatalogoServicios.iconoDe(servicio.uppercase()))
+}
+
+// Claves de ícono que puede elegir el laboratorio al crear un servicio (las mismas que acepta el servidor).
+val CLAVES_ICONO = listOf("RAYO", "GOTA", "WIFI", "TELEFONO", "GAS", "TV", "BASURA", "OTRO")
+
+// Clave de ícono -> ícono de Material.
+fun iconoPorClave(clave: String?): ImageVector = when (clave) {
+    "RAYO" -> Icons.Filled.Bolt
+    "GOTA" -> Icons.Filled.WaterDrop
+    "WIFI" -> Icons.Filled.Wifi
+    "TELEFONO" -> Icons.Filled.Phone
+    "GAS" -> Icons.Filled.LocalFireDepartment
+    "TV" -> Icons.Filled.Tv
+    "BASURA" -> Icons.Filled.Recycling
+    else -> Icons.Filled.Receipt        // OTRO o desconocido: factura genérica.
+}
+
+// CATÁLOGO EN MEMORIA: código del servicio -> clave de su ícono (ej. "GAS" -> "GAS").
+// Lo llena el ViewModel al descargar GET /servicios; así cualquier fila del historial puede dibujar
+// el ícono correcto sin conocer al ViewModel. @Volatile: lo escribe una corrutina y lo lee la UI.
+object CatalogoServicios {
+    @Volatile
+    private var iconos: Map<String, String> = emptyMap()
+
+    fun actualizar(servicios: List<com.example.carriel_cuenca_billeteradistribuida.model.Servicio>) {
+        iconos = servicios.associate { it.codigo to it.icono }
+    }
+
+    fun iconoDe(codigo: String): String? = iconos[codigo]
 }

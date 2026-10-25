@@ -7,6 +7,8 @@ import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.LoginRequ
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.MontoRequest
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.MovimientoDto
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.NuevaFacturaRequest
+import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.NuevoServicioRequest
+import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.ServicioDto
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.OperacionRespuestaDto
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.PagoServicioRequest
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.RegistroRequest
@@ -59,6 +61,13 @@ interface BilleteraApi {
 
     @POST("admin/facturas")
     suspend fun crearFactura(@Body cuerpo: NuevaFacturaRequest): ContratoDto
+
+    // ---------- Catálogo de servicios ----------
+    @GET("servicios")
+    suspend fun servicios(): List<ServicioDto>
+
+    @POST("admin/servicios")                                 // Solo laboratorio.
+    suspend fun crearServicio(@Body cuerpo: NuevoServicioRequest): ServicioDto
 
     @POST("depositar")
     suspend fun depositar(@Body cuerpo: MontoRequest): OperacionRespuestaDto

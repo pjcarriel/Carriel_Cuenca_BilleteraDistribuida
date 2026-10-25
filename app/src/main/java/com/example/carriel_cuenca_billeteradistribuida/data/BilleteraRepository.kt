@@ -17,6 +17,8 @@ import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.ContratoD
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.EventoAvisoDto
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.EventoConexionesDto
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.NuevaFacturaRequest
+import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.NuevoServicioRequest
+import com.example.carriel_cuenca_billeteradistribuida.model.Servicio
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.EventoWebSocketDto
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.MontoRequest
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.OperacionRespuestaDto
@@ -185,6 +187,22 @@ class BilleteraRepository(
                 api.crearFactura(NuevaFacturaRequest(cedula, titular, servicio, periodo, monto)).aFactura()
             }
         }
+
+    // Catálogo de servicios (LUZ, AGUA, INTERNET y los que agregue el laboratorio).
+    suspend fun servicios(): Resultado<List<Servicio>> = withContext(Dispatchers.IO) {
+        llamarServidor {
+            logHilo("Repository: GET /servicios (Retrofit)")
+            api.servicios().map { Servicio(it.codigo, it.nombre, it.icono) }
+        }
+    }
+
+    // Agrega un servicio al catálogo (solo laboratorio).
+    suspend fun crearServicio(codigo: String, nombre: String, icono: String): Resultado<Servicio> = withContext(Dispatchers.IO) {
+        llamarServidor {
+            logHilo("Repository: POST /admin/servicios $codigo (Retrofit)")
+            api.crearServicio(NuevoServicioRequest(codigo, nombre, icono)).let { Servicio(it.codigo, it.nombre, it.icono) }
+        }
+    }
 
     // DTO de red -> modelo de la app (función de extensión privada: solo se usa en este archivo).
     private fun ContratoDto.aFactura() =

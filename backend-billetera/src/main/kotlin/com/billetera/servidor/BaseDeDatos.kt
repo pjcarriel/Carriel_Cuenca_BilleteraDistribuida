@@ -137,6 +137,27 @@ object BaseDeDatos {
                     st.executeUpdate("CREATE INDEX idx_contratos_cedula ON contratos (cedula)")
                     log.info("Migración: columnas contratos.cedula y contratos.periodo agregadas")
                 }
+                // SERVICIOS: catálogo de servicios básicos que se pueden facturar y pagar.
+                // Antes eran fijos en el código (LUZ, AGUA, INTERNET); ahora el laboratorio puede AGREGAR más.
+                // icono = clave del ícono que dibuja la app (RAYO, GOTA, WIFI, TELEFONO, GAS, TV, BASURA, OTRO).
+                st.executeUpdate(
+                    """
+                    CREATE TABLE IF NOT EXISTS servicios (
+                        codigo VARCHAR(10)  PRIMARY KEY,
+                        nombre VARCHAR(40)  NOT NULL,
+                        icono  VARCHAR(20)  NOT NULL,
+                        creado TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
+                    )
+                    """.trimIndent()
+                )
+                st.executeUpdate(
+                    """
+                    INSERT IGNORE INTO servicios (codigo, nombre, icono) VALUES
+                        ('LUZ', 'Luz eléctrica', 'RAYO'),
+                        ('AGUA', 'Agua potable', 'GOTA'),
+                        ('INTERNET', 'Internet', 'WIFI')
+                    """.trimIndent()
+                )
                 // Cuentas de demostración (INSERT IGNORE = si ya existen, no hace nada).
                 // La cuenta 9999 (laboratorio) tiene saldo alto para lanzar muchas transferencias en la demo.
                 st.executeUpdate(

@@ -33,6 +33,13 @@ internal fun leerFactura(rs: ResultSet): ContratoRespuesta {
     )
 }
 
+// Códigos de los servicios que EXISTEN en la tabla servicios (ej. {"LUZ", "AGUA", "INTERNET", "GAS"}).
+// Se lee de la base de datos cada vez: así un servicio recién creado se puede usar enseguida.
+internal fun codigosServicio(con: Connection): Set<String> =
+    con.prepareStatement("SELECT codigo FROM servicios").use { ps ->
+        ps.executeQuery().use { rs -> buildSet { while (rs.next()) add(rs.getString(1)) } }
+    }
+
 // Monto válido (> 0) convertido a BigDecimal con 2 decimales exactos.
 // BigDecimal guarda el número EXACTO (un Double puede dar 0.1 + 0.2 = 0.30000000000000004).
 // HALF_UP = redondeo "de toda la vida": 10.125 -> 10.13. isNaN() rechaza el valor "no es un número".

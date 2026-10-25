@@ -52,6 +52,12 @@ data class ContratoDto(
 // Aviso simple por WEBSOCKET (laboratorio): {"tipo":"FACTURAS_ACTUALIZADAS","detalle":"La cuenta 1001 pagó LUZ 445568"}
 data class EventoAvisoDto(val tipo: String, val detalle: String?)
 
+// GET /servicios: un servicio del catálogo.  {"codigo":"LUZ","nombre":"Luz eléctrica","icono":"RAYO"}
+data class ServicioDto(val codigo: String, val nombre: String, val icono: String)
+
+// POST /admin/servicios (solo laboratorio): agregar un servicio.
+data class NuevoServicioRequest(val codigo: String, val nombre: String, val icono: String)
+
 // POST /admin/facturas (solo laboratorio): crear una factura nueva.
 data class NuevaFacturaRequest(
     val cedula: String,

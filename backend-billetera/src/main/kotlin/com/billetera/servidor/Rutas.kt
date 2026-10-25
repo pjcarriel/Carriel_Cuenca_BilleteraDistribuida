@@ -145,6 +145,18 @@ fun Application.configurarRutas() {
             call.respond(respuesta)
         }
 
+        // GET /servicios -> catálogo de servicios básicos (para el diálogo de pago y el panel).
+        get("/servicios") {
+            call.sesion()
+            call.respond(ServiciosRepositorio.servicios())
+        }
+
+        // POST /admin/servicios -> el laboratorio agrega un servicio nuevo (201 Created; 409 si ya existe).
+        post("/admin/servicios") {
+            call.sesionLaboratorio()
+            call.respond(HttpStatusCode.Created, ServiciosRepositorio.crearServicio(call.receive<NuevoServicioRequest>()))
+        }
+
         // GET /facturas?cedula=1712345675&servicio=LUZ -> facturas de esa cédula (pendientes primero).
         get("/facturas") {
             call.sesion()
