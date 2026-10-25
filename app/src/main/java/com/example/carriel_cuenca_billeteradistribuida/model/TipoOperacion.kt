@@ -1,27 +1,28 @@
-// Paquete (carpeta lógica) donde viven los modelos de datos de la app.
+// =====================================================================
+//   Los 5 tipos de operación de la billetera (depósito, retiro, etc.).
+//   Cada tipo sabe qué nombre mostrar y si el dinero entra o sale.
+// =====================================================================
+
 package com.example.carriel_cuenca_billeteradistribuida.model
 
-// "enum class" = una lista CERRADA de valores posibles.
-// Una operación solo puede ser uno de estos 5 tipos; nunca un texto inventado.
-// Cada valor lleva dos datos (definidos en el constructor de abajo):
-//   - etiqueta:  el texto que se muestra en pantalla.
-//   - esIngreso: true si el dinero ENTRA (verde), false si SALE (rojo).
+// Lista fija de tipos de operación: no se puede inventar otro.
+// etiqueta = texto en pantalla; esIngreso = true si entra dinero (verde), false si sale (rojo).
 enum class TipoOperacion(
-    val etiqueta: String,   // "val" = propiedad de solo lectura (no se puede cambiar).
-    val esIngreso: Boolean  // Boolean = verdadero o falso.
+    val etiqueta: String,   // Texto que se ve en pantalla.
+    val esIngreso: Boolean  // Verdadero = entra dinero; falso = sale dinero.
 ) {
-    // Depósito: el usuario recarga su cuenta. Dinero que ENTRA.
+    // El usuario recarga su cuenta. Entra dinero.
     DEPOSITO("Depósito", true),
 
-    // Retiro: el usuario saca efectivo. Dinero que SALE.
+    // El usuario saca efectivo. Sale dinero.
     RETIRO("Retiro", false),
 
-    // Transferencia que YO envío a otra cuenta. Dinero que SALE.
+    // El usuario envía dinero a otra cuenta. Sale dinero.
     TRANSFERENCIA_ENVIADA("Transferencia enviada", false),
 
-    // Transferencia que OTRO me envía (llegará por WebSocket). Dinero que ENTRA.
+    // Otra persona le envía dinero al usuario. Entra dinero.
     TRANSFERENCIA_RECIBIDA("Transferencia recibida", true),
 
-    // Pago de luz, agua o internet. Dinero que SALE.
+    // El usuario paga luz, agua, internet u otro servicio. Sale dinero.
     PAGO_SERVICIO("Pago de servicio", false)
 }

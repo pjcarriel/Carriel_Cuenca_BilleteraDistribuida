@@ -10,10 +10,8 @@
 agp = "9.4.1"
 # Utilidades de Kotlin para Android (extensiones de AndroidX).
 coreKtx = "1.10.1"
-# Librerías de pruebas (vienen con la plantilla).
+# JUnit: pruebas unitarias.
 junit = "4.13.2"
-junitVersion = "1.1.5"
-espressoCore = "3.5.1"
 # Lifecycle: ViewModel y recolección de Flows respetando el ciclo de vida.
 lifecycle = "2.8.7"
 # Puente entre la Activity y Jetpack Compose.
@@ -43,10 +41,6 @@ materialIconsExtended = "1.7.8"
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 # JUnit 4: pruebas UNITARIAS (corren en la PC).
 junit = { group = "junit", name = "junit", version.ref = "junit" }
-# Extensión de JUnit para pruebas INSTRUMENTADAS (corren en el teléfono).
-androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
-# Espresso: pruebas de interfaz en el teléfono (vienen con la plantilla).
-androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
 # Permite usar setContent { } en la Activity para dibujar con Compose.
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 
@@ -64,14 +58,6 @@ androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", versi
 androidx-compose-ui = { group = "androidx.compose.ui", name = "ui" }
 # Colores, pinceles y gráficos (Color, Brush...).
 androidx-compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
-# Herramientas de vista previa (@Preview) para Android Studio.
-androidx-compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
-# Anotación @Preview.
-androidx-compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
-# Manifest de apoyo para las pruebas de interfaz.
-androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
-# Pruebas de interfaz de Compose con JUnit 4.
-androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 # Componentes de Material 3 (Card, Button, AlertDialog...).
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 # Íconos como AccountBalanceWallet, Payments, Bolt, etc.

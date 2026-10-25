@@ -1,4 +1,8 @@
-// Paquete del panel de ADMINISTRACIÓN (solo usuario laboratorio).
+// =====================================================================
+//   La pantalla de inicio del ADMINISTRADOR (usuario laboratorio): muestra
+//   la conexión, los teléfonos conectados, el resumen de cobros y sus accesos.
+// =====================================================================
+
 package com.example.carriel_cuenca_billeteradistribuida.ui.admin
 
 import androidx.compose.foundation.background
@@ -50,21 +54,19 @@ import com.example.carriel_cuenca_billeteradistribuida.ui.theme.AzulTarjetaClaro
 import com.example.carriel_cuenca_billeteradistribuida.ui.theme.RojoEgreso
 import com.example.carriel_cuenca_billeteradistribuida.ui.theme.VerdeIngreso
 
-// PANTALLA DE INICIO DEL LABORATORIO (el ADMINISTRADOR del sistema, no un cliente).
-// El laboratorio no deposita ni paga como un cliente: actúa como la EMPRESA DE SERVICIOS
-// (crea servicios, emite facturas y ve los pagos) y sirve para las PRUEBAS DE CONCURRENCIA.
-// Por eso no ve saldo, ni botones de operación, ni historial: ve el estado del sistema distribuido.
+// Inicio del administrador: no ve saldo ni historial, sino el estado del sistema.
 @Composable
 fun LaboratorioScreen(
-    estadoConexion: EstadoConexion,
-    nodosConectados: NodosConectados?,
+    estadoConexion: EstadoConexion,     // Si está conectado al servidor.
+    nodosConectados: NodosConectados?,  // Teléfonos conectados ahora mismo.
     admin: EstadoAdmin,                 // Facturas (para el resumen de cobros).
-    servicios: List<Servicio>,          // Catálogo de servicios (para mostrar cuántos hay).
-    onAbrirServicios: () -> Unit,
-    onAbrirPruebas: () -> Unit,
+    servicios: List<Servicio>,          // Lista de servicios (para mostrar cuántos hay).
+    onAbrirServicios: () -> Unit,       // Abre "Servicios y facturas".
+    onAbrirPruebas: () -> Unit,         // Abre "Pruebas de concurrencia".
     onCerrarSesion: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // Datos para la pantalla: si hay conexión y las facturas separadas en pendientes y pagadas.
     val enLinea = estadoConexion == EstadoConexion.EN_LINEA
     val pendientes = admin.facturas.filter { !it.pagado }
     val pagadas = admin.facturas.filter { it.pagado }
@@ -84,7 +86,7 @@ fun LaboratorioScreen(
             IconButton(onClick = onCerrarSesion) { Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Cerrar sesión") }
         }
 
-        // ---------- TARJETA DEL ADMINISTRADOR (con el estado del WebSocket) ----------
+        // ---------- TARJETA DEL ADMINISTRADOR (con el estado de la conexión) ----------
         Card(shape = RoundedCornerShape(24.dp), elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)) {
             Column(
                 modifier = Modifier
@@ -111,13 +113,13 @@ fun LaboratorioScreen(
         // ---------- NODOS CONECTADOS (tiempo real) ----------
         TarjetaNodos(nodos = nodosConectados, enLinea = enLinea)
 
-        // ---------- RESUMEN DE COBROS ----------
+        // ---------- RESUMEN DE COBROS: cuánto falta cobrar y cuánto ya se cobró ----------
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             ResumenInicio("Por cobrar", pendientes.sumOf { it.monto }, "${pendientes.size} facturas pendientes", RojoEgreso, Modifier.weight(1f))
             ResumenInicio("Recaudado", pagadas.sumOf { it.monto }, "${pagadas.size} facturas pagadas", VerdeIngreso, Modifier.weight(1f))
         }
 
-        // ---------- ACCESOS ----------
+        // ---------- ACCESOS A LAS OTRAS SECCIONES ----------
         OpcionMenu(
             icono = Icons.Filled.Storefront,
             titulo = "Servicios y facturas",
@@ -133,7 +135,7 @@ fun LaboratorioScreen(
     }
 }
 
-// Recuadro del resumen de cobros.
+// Recuadro del resumen de cobros: título, total en dinero y un texto pequeño.
 @Composable
 private fun ResumenInicio(titulo: String, monto: Double, detalle: String, color: Color, modifier: Modifier = Modifier) {
     Card(modifier = modifier) {
@@ -145,7 +147,7 @@ private fun ResumenInicio(titulo: String, monto: Double, detalle: String, color:
     }
 }
 
-// Un acceso grande del menú: ícono en círculo, título, descripción y flecha.
+// Botón grande del menú: ícono en círculo, título, descripción y flecha. Al tocarlo abre esa sección.
 @Composable
 private fun OpcionMenu(icono: ImageVector, titulo: String, descripcion: String, onClick: () -> Unit) {
     Card(onClick = onClick, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {

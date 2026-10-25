@@ -1,4 +1,8 @@
-// Paquete de la interfaz gráfica.
+// =====================================================================
+//   Es la billetera por dentro, cuando el usuario YA inició sesión: decide
+//   qué pantalla, ventana, mensaje o comprobante se muestra en cada momento.
+// =====================================================================
+
 package com.example.carriel_cuenca_billeteradistribuida.ui
 
 import androidx.compose.foundation.layout.Column
@@ -11,7 +15,7 @@ import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect                   // Efecto con "limpieza" al salir de pantalla.
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,67 +38,58 @@ import com.example.carriel_cuenca_billeteradistribuida.ui.pruebas.PruebasConcurr
 import com.example.carriel_cuenca_billeteradistribuida.ui.theme.RojoEgreso
 import com.example.carriel_cuenca_billeteradistribuida.ui.theme.VerdeIngreso
 
-// BILLETERA del usuario con sesión activa: une su ViewModel con la pantalla.
-// Dibuja el Dashboard (o el panel de pruebas), los avisos (Snackbar) y el diálogo de operación.
+// Todo lo que el usuario ve después de iniciar sesión.
 @Composable
 fun BilleteraApp(
     sesion: SesionEntity,                       // Quién inició sesión (usuario, nombre, cuenta).
     saludo: String?,                            // Mensaje de bienvenida (o null).
-    onSaludoMostrado: () -> Unit,               // Avisa que el saludo ya se mostró (para no repetirlo).
+    onSaludoMostrado: () -> Unit,               // Avisa que el saludo ya se mostró.
     onCerrarSesion: () -> Unit,                 // Botón de cerrar sesión.
     onActividad: () -> Unit,                    // Reinicia el contador de inactividad.
-    onSesionInvalida: (String) -> Unit,         // El servidor rechazó la sesión (401).
-    // Un ViewModel POR CUENTA ("key"): si entra otro usuario, tiene su propio estado y repositorio.
+    onSesionInvalida: (String) -> Unit,         // El servidor ya no acepta la sesión.
+    // Un ViewModel por cuenta, para que no se mezclen los datos de dos usuarios.
     viewModel: BilleteraViewModel = viewModel(
         key = "billetera-${sesion.cuenta}",
         factory = BilleteraViewModel.factory(sesion.cuenta, onSesionInvalida)
     )
 ) {
-    // Estado que viene del ViewModel. collectAsStateWithLifecycle = escucha cada StateFlow y
-    // redibuja cuando cambia (ej. llega una transferencia por WebSocket y sube el saldo).
+    // Datos del ViewModel; la pantalla se actualiza sola cuando cambian.
     val saldo by viewModel.saldo.collectAsStateWithLifecycle()
-    val estadoConexion by viewModel.estadoConexion.collectAsStateWithLifecycle()   // EN_LINEA, CONECTANDO...
-    val historial by viewModel.historial.collectAsStateWithLifecycle()             // Movimientos (desde Room).
+    val estadoConexion by viewModel.estadoConexion.collectAsStateWithLifecycle()
+    val historial by viewModel.historial.collectAsStateWithLifecycle()
     val estado by viewModel.estado.collectAsStateWithLifecycle()                   // Resultado de la última operación.
     val nodosConectados by viewModel.nodosConectados.collectAsStateWithLifecycle()
-    val servicios by viewModel.servicios.collectAsStateWithLifecycle()                // Catálogo de servicios.
+    val servicios by viewModel.servicios.collectAsStateWithLifecycle()
     val admin by viewModel.admin.collectAsStateWithLifecycle()                         // Facturas (laboratorio).
 
-    // Estado propio de la pantalla (remember = se conserva entre redibujados).
-    // dialogoAbierto: qué operación se está haciendo (depósito, retiro...) o null = ningún diálogo.
+    // Qué ventana de operación está abierta (null = ninguna).
     var dialogoAbierto by remember { mutableStateOf<TipoOperacion?>(null) }
-    var mostrarPruebas by remember { mutableStateOf(false) }      // Panel de pruebas de concurrencia.
-    var mostrarServicios by remember { mutableStateOf(false) }    // Panel de administración de servicios (laboratorio).
-    // Comprobante abierto (null = ninguno): al tocar un movimiento o al terminar una operación.
+    var mostrarPruebas by remember { mutableStateOf(false) }      // Panel de pruebas abierto.
+    var mostrarServicios by remember { mutableStateOf(false) }    // Panel de servicios abierto.
+    // Comprobante abierto (null = ninguno).
     var comprobante by remember { mutableStateOf<Movimiento?>(null) }
-    // Movimiento cuyo PANEL DE DETALLE está abierto (null = ninguno). Desde ahí se abre el comprobante.
+    // Movimiento con su detalle abierto (null = ninguno).
     var detalle by remember { mutableStateOf<Movimiento?>(null) }
     val comprobanteNuevo by viewModel.comprobanteNuevo.collectAsStateWithLifecycle()
-    // SnackbarHostState = controla la barrita de mensajes que aparece abajo.
+    // Barrita de mensajes de abajo.
     val snackbarHostState = remember { SnackbarHostState() }
-    var mensajeEsError by remember { mutableStateOf(false) }      // Decide el color del Snackbar.
+    var mensajeEsError by remember { mutableStateOf(false) }      // true = rojo, false = verde.
 
-    // Al entrar: sincronizar con el servidor, abrir el WebSocket y mostrar el saludo (una sola vez).
+    // Al entrar: conectarse al servidor y mostrar el saludo.
     LaunchedEffect(Unit) {
         viewModel.iniciarConexion()
         saludo?.let { viewModel.mostrarMensaje(it); onSaludoMostrado() }
     }
-    // Recibir dinero en tiempo real cuenta como ACTIVIDAD: si la app está abierta mostrando el saldo
-    // (ej. en la defensa, mientras se envía desde Postman), la sesión no se cierra por inactividad.
-    // collect = se queda escuchando el flujo; cada transferencia recibida llama a onActividad().
+    // Si llega dinero, cuenta como actividad (la sesión no se cierra).
     LaunchedEffect(Unit) {
         viewModel.transferenciasRecibidas.collect { onActividad() }
     }
-    // Al SALIR de esta pantalla (cerrar sesión, cambiar de usuario): cerrar el WebSocket.
-    // DisposableEffect = efecto con "limpieza": onDispose se ejecuta cuando la pantalla desaparece.
+    // Al salir de la billetera: cortar la conexión en tiempo real.
     DisposableEffect(Unit) {
         onDispose { viewModel.detenerTiempoReal() }
     }
 
-    // Mensajes de resultado (verde = éxito, rojo = error).
-    // LaunchedEffect(estado): se vuelve a lanzar CADA VEZ que cambia "estado".
-    // showSnackbar es suspend: espera a que el mensaje desaparezca; luego mensajeMostrado()
-    // regresa el estado a Inactivo para no repetir el mismo mensaje.
+    // Muestra abajo el resultado de cada operación: verde = éxito, rojo = error.
     LaunchedEffect(estado) {
         when (val e = estado) {
             is EstadoOperacion.Exito -> {
@@ -107,17 +102,16 @@ fun BilleteraApp(
                 snackbarHostState.showSnackbar("✖ ${e.mensaje}")
                 viewModel.mensajeMostrado()
             }
-            EstadoOperacion.Inactivo, EstadoOperacion.Procesando -> Unit   // Nada que mostrar.
+            EstadoOperacion.Inactivo, EstadoOperacion.Procesando -> Unit
         }
     }
 
-    // Operación exitosa: el ViewModel entrega su comprobante y lo abrimos (como en los bancos).
+    // Operación exitosa: se abre su comprobante.
     LaunchedEffect(comprobanteNuevo) {
         comprobanteNuevo?.let { comprobante = it; viewModel.comprobanteMostrado() }
     }
 
-    // Diálogo del comprobante (se dibuja encima de cualquier pantalla).
-    // Panel modal de detalle (al tocar un movimiento). "Ver comprobante" cierra el panel y abre el comprobante.
+    // Detalle de un movimiento, con el botón "Ver comprobante".
     detalle?.let { mov ->
         DetalleMovimientoSheet(
             movimiento = mov,
@@ -126,11 +120,12 @@ fun BilleteraApp(
         )
     }
 
+    // Ventana del comprobante.
     comprobante?.let { mov ->
         ComprobanteDialog(movimiento = mov, cuenta = sesion.cuenta, titular = sesion.nombre, onCerrar = { comprobante = null })
     }
 
-    // Panel de administración de servicios (solo laboratorio), en lugar del dashboard.
+    // Panel de servicios (laboratorio): reemplaza a la pantalla principal.
     if (mostrarServicios) {
         AdminServiciosScreen(
             viewModel = viewModel,
@@ -140,22 +135,21 @@ fun BilleteraApp(
         return
     }
 
-    // Si el panel de pruebas está abierto, lo mostramos en lugar del dashboard
-    // (el WebSocket y la sesión siguen vivos: no se desmontan).
+    // Panel de pruebas de concurrencia: reemplaza a la pantalla principal.
     if (mostrarPruebas) {
         PruebasConcurrenciaScreen(
             viewModel = viewModel,
             onVolver = { mostrarPruebas = false },
             onActividad = onActividad
         )
-        return                                  // "return" = no dibujar nada más (ni el dashboard).
+        return
     }
 
-    // Scaffold = esqueleto Material: contenido + lugar para el Snackbar (mensajes de abajo).
+    // Estructura de la pantalla: contenido + barrita de mensajes abajo.
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         snackbarHost = {
-            // Snackbar personalizado: fondo rojo o verde según mensajeEsError, texto blanco.
+            // Mensaje con fondo rojo o verde y letras blancas.
             SnackbarHost(snackbarHostState) { datos ->
                 Snackbar(
                     snackbarData = datos,
@@ -166,14 +160,11 @@ fun BilleteraApp(
         }
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding)) {
-            // Mientras una operación espera al servidor: barra de progreso arriba y botones desactivados.
+            // Mientras se espera al servidor: barra de carga arriba.
             val procesando = estado is EstadoOperacion.Procesando
             if (procesando) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-            // El LABORATORIO no es un cliente: es el ADMINISTRADOR del sistema (empresa de servicios y
-            // pruebas). Por eso ve su propia pantalla de inicio, sin saldo ni botones de cliente.
+            // "laboratorio" es el administrador: ve su propio panel, no la billetera de cliente.
             if (sesion.usuario == "laboratorio") {
-                // Al mostrar el inicio: cargar TODAS las facturas para el resumen de cobros
-                // (sin filtros; y queda "abierto", así se actualiza solo cuando alguien paga).
                 LaunchedEffect(Unit) { viewModel.cargarFacturasAdmin(estado = null, servicio = null) }
                 LaboratorioScreen(
                     estadoConexion = estadoConexion,
@@ -186,7 +177,7 @@ fun BilleteraApp(
                     modifier = Modifier.fillMaxSize()
                 )
             } else {
-                // El Dashboard solo recibe DATOS y lambdas: no conoce al ViewModel.
+                // Pantalla principal del cliente.
                 DashboardScreen(
                     nombre = sesion.nombre,
                     usuario = sesion.usuario,
@@ -195,28 +186,27 @@ fun BilleteraApp(
                     estadoConexion = estadoConexion,
                     movimientos = historial,
                     procesando = procesando,
-                    onAccionClick = { tipo -> dialogoAbierto = tipo },    // Abre el diálogo de esa operación.
+                    onAccionClick = { tipo -> dialogoAbierto = tipo },    // Abre la ventana de esa operación.
                     onCerrarSesion = onCerrarSesion,
-                    onVerDetalle = { detalle = it },                      // Abre el panel de detalle.
+                    onVerDetalle = { detalle = it },
                     modifier = Modifier.fillMaxSize()
                 )
             }
         }
     }
 
-    // Diálogo de operación: solo se dibuja si hay una operación elegida (dialogoAbierto no es null).
+    // Ventana de operación (depósito, retiro, transferencia o pago).
     dialogoAbierto?.let { tipo ->
         OperacionDialog(
             tipo = tipo,
             saldo = saldo,
             estadoConexion = estadoConexion,
             cuentaPropia = sesion.cuenta,
-            servicios = servicios,                                  // Catálogo del servidor.
-            // Referencia a la función suspend del ViewModel: el diálogo la llama y espera la factura.
+            servicios = servicios,
             onConsultarFactura = viewModel::consultarFactura,
-            onBuscarFacturas = viewModel::buscarFacturas,           // Pago "Por cédula".
+            onBuscarFacturas = viewModel::buscarFacturas,
             onActividad = onActividad,
-            // Confirmar: se cierra el diálogo y el ViewModel ejecuta la operación en segundo plano.
+            // Confirmar: se cierra la ventana y el ViewModel hace la operación.
             onConfirmar = { solicitud ->
                 dialogoAbierto = null
                 viewModel.ejecutarOperacion(solicitud)

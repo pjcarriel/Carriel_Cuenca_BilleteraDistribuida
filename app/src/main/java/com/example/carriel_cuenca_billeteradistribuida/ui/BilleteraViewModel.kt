@@ -1,4 +1,8 @@
-// Paquete de la interfaz gráfica.
+// =====================================================================
+//   Es el CEREBRO de la billetera: cuando el usuario aprieta un botón,
+//   decide qué hacer (depositar, pagar, mostrar mensaje, abrir comprobante).
+// =====================================================================
+
 package com.example.carriel_cuenca_billeteradistribuida.ui
 
 import androidx.lifecycle.ViewModel
@@ -37,56 +41,52 @@ import kotlinx.coroutines.launch
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
-// VIEWMODEL DE LA BILLETERA de UNA cuenta (la de la sesión activa).
-// "onSesionInvalida": lambda que avisa al SesionViewModel si el servidor rechaza la sesión (401).
+// Cerebro de la billetera de UNA cuenta (la del usuario que inició sesión).
 class BilleteraViewModel(
     private val repositorio: BilleteraRepository,
     private val onSesionInvalida: (String) -> Unit
 ) : ViewModel() {
 
-    // ---------------- ESTADO QUE OBSERVA LA PANTALLA ----------------
-    // stateIn convierte el Flow de Room en un StateFlow (con valor actual) que la pantalla puede leer.
-    //  - viewModelScope: ámbito de corrutinas del ViewModel; se CANCELA solo cuando el ViewModel muere.
-    //  - SharingStarted.WhileSubscribed(5_000): lee Room solo mientras alguien observa; si la pantalla
-    //    deja de observar, espera 5 s antes de detenerse (así una rotación de pantalla no reinicia la lectura).
-    //  - El último parámetro es el valor INICIAL mientras llega el primer dato (lista vacía / null).
+    // ---------------- DATOS QUE MUESTRA LA PANTALLA ----------------
+
+    // Historial de movimientos (lista vacía mientras carga).
     val historial: StateFlow<List<Movimiento>> = repositorio.observarHistorial()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    // Saldo de la cuenta (null = todavía no se sabe).
     val saldo: StateFlow<Double?> = repositorio.observarSaldo()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    // En línea, conectando o desconectado.
     val estadoConexion: StateFlow<EstadoConexion> = repositorio.estadoConexion
 
-    // Nodos conectados al servidor (solo se llena para el usuario laboratorio).
+    // Dispositivos conectados (solo para laboratorio).
     val nodosConectados: StateFlow<NodosConectados?> = repositorio.nodosConectados
 
-    // Evento "llegó dinero por WebSocket" (la pantalla lo usa para reiniciar el contador de inactividad).
+    // Aviso de "llegó dinero" en tiempo real.
     val transferenciasRecibidas: SharedFlow<Movimiento> = repositorio.transferenciasRecibidas
 
-    // Estado de la última operación (Inactivo, Procesando, Exito, Error). "_estado" solo se cambia aquí.
+    // Resultado de la última operación: inactivo, procesando, éxito o error.
     private val _estado = MutableStateFlow<EstadoOperacion>(EstadoOperacion.Inactivo)
     val estado: StateFlow<EstadoOperacion> = _estado.asStateFlow()
 
-    // Corrutina del WebSocket (null si no está corriendo).
-    // Job = el "control remoto" de una corrutina lanzada: permite preguntar isActive o llamar cancel().
+    // Conexión en tiempo real (null = apagada).
     private var trabajoTiempoReal: Job? = null
 
-    // "init" corre al crear el ViewModel. Cada launch es una corrutina que se queda ESCUCHANDO un
-    // SharedFlow (collect no termina) hasta que el ViewModel se destruye y viewModelScope la cancela.
+    // Al crearse, se queda escuchando tres avisos del servidor.
     init {
-        // Aviso de dinero recibido por WebSocket.
+        // Llegó dinero: mensaje verde "Recibiste $...".
         viewModelScope.launch {
             repositorio.transferenciasRecibidas.collect { movimiento ->
                 logHilo("ViewModel: transferencia recibida en tiempo real")
                 _estado.value = EstadoOperacion.Exito("Recibiste ${formatearMonto(movimiento.monto)} (${movimiento.detalle})")
             }
         }
-        // Alguien pagó o se creó una factura: si el panel de servicios está abierto, se recarga solo.
+        // Cambió una factura: si el panel de facturas está abierto, se recarga.
         viewModelScope.launch {
             repositorio.facturasActualizadas.collect { if (_admin.value.abierto) cargarFacturasAdmin() }
         }
-        // El WebSocket fue rechazado por la sesión: avisamos al SesionViewModel.
+        // El servidor rechazó la sesión: volver al login.
         viewModelScope.launch {
             repositorio.sesionRechazada.collect { mensaje -> onSesionInvalida(mensaje) }
         }
@@ -94,10 +94,9 @@ class BilleteraViewModel(
 
     // ---------------- ACCIONES ----------------
 
-    // Sincroniza saldo e historial con el servidor y abre el WebSocket.
-    // viewModelScope.launch inicia la corrutina en el hilo MAIN; el Repository salta a IO por dentro.
+    // Al entrar: trae saldo e historial y abre la conexión en tiempo real.
     fun iniciarConexion() {
-        cargarServicios()                                       // Catálogo de servicios (para pagos e íconos).
+        cargarServicios()
         viewModelScope.launch {
             logHilo("ViewModel: sincronizando saldo e historial con el servidor")
             when (val resultado = repositorio.sincronizarSaldo()) {
@@ -106,33 +105,31 @@ class BilleteraViewModel(
                 is Resultado.Error -> manejarError(resultado)
             }
         }
-        // "!= true" cubre dos casos: no hay Job (null) o ya terminó. Así nunca abrimos DOS túneles a la vez.
+        // Solo una conexión a la vez.
         if (trabajoTiempoReal?.isActive != true) {
             trabajoTiempoReal = viewModelScope.launch { repositorio.mantenerTiempoReal() }
         }
     }
 
-    // Cierra el WebSocket (al cerrar sesión o al salir de la pantalla).
-    // cancel() detiene la corrutina: el delay o el collect lanzan CancellationException, awaitClose
-    // (WebSocketCliente) cierra el socket y el bucle de reconexión termina.
+    // Al cerrar sesión: corta la conexión en tiempo real.
     fun detenerTiempoReal() {
         trabajoTiempoReal?.cancel()
         trabajoTiempoReal = null
     }
 
-    // Muestra un mensaje de éxito (ej. el saludo de bienvenida).
+    // Muestra abajo un mensaje verde (ej. el saludo).
     fun mostrarMensaje(texto: String) {
         _estado.value = EstadoOperacion.Exito(texto)
     }
 
-    // Consulta una factura. Es "suspend": el diálogo la llama y ESPERA la respuesta sin bloquear.
+    // Busca una factura por número de contrato (en "Pagar servicio").
     suspend fun consultarFactura(servicio: String, codigo: String): Resultado<Factura> {
         val resultado = repositorio.consultarFactura(servicio, codigo)
         if (resultado is Resultado.Error && resultado.codigoHttp == HTTP_NO_AUTORIZADO) onSesionInvalida(resultado.mensaje)
         return resultado
     }
 
-    // Busca las facturas de una cédula. "suspend" como consultarFactura: el diálogo espera la lista.
+    // Busca las facturas pendientes de una cédula (pago "Por cédula").
     suspend fun buscarFacturas(cedula: String, servicio: String): Resultado<List<Factura>> {
         val resultado = repositorio.buscarFacturas(cedula, servicio)
         if (resultado is Resultado.Error && resultado.codigoHttp == HTTP_NO_AUTORIZADO) onSesionInvalida(resultado.mensaje)
@@ -140,11 +137,11 @@ class BilleteraViewModel(
     }
 
     // ---------------- CATÁLOGO DE SERVICIOS ----------------
-    // Empieza con los 3 de siempre (por si no hay conexión) y se reemplaza con el del servidor.
+    // Servicios que se pueden pagar (empieza con los 3 básicos).
     private val _servicios = MutableStateFlow(SERVICIOS_BASE)
     val servicios: StateFlow<List<Servicio>> = _servicios.asStateFlow()
 
-    // Descarga el catálogo (al entrar y después de crear un servicio).
+    // Trae del servidor la lista de servicios (Luz, Agua, Internet...).
     fun cargarServicios() {
         viewModelScope.launch {
             val r = repositorio.servicios()
@@ -155,7 +152,7 @@ class BilleteraViewModel(
         }
     }
 
-    // Agrega un servicio (solo laboratorio). Si sale bien, recarga el catálogo.
+    // El laboratorio crea un servicio nuevo; luego se recarga la lista.
     suspend fun crearServicio(codigo: String, nombre: String, icono: String): Resultado<Servicio> {
         val r = repositorio.crearServicio(codigo, nombre, icono)
         if (r is Resultado.Exito) cargarServicios()
@@ -163,15 +160,15 @@ class BilleteraViewModel(
         return r
     }
 
-    // ---------------- ADMINISTRACIÓN DE SERVICIOS (solo laboratorio) ----------------
+    // ---------------- PANEL DEL ADMINISTRADOR (laboratorio) ----------------
+    // Facturas, filtros y estado de carga del panel.
     private val _admin = MutableStateFlow(EstadoAdmin())
     val admin: StateFlow<EstadoAdmin> = _admin.asStateFlow()
 
-    // Avisos en tiempo real ("La cuenta 1001 pagó LUZ 445568"): la pantalla los muestra en un Snackbar.
+    // Avisos en tiempo real ("La cuenta 1001 pagó LUZ 445568").
     val avisosFacturas: SharedFlow<String> = repositorio.facturasActualizadas
 
-    // Carga la lista con los filtros actuales. Si se pasan filtros nuevos, primero los guarda.
-    // "copy" crea un EstadoAdmin igual pero con los campos indicados cambiados.
+    // Trae la lista de facturas con los filtros elegidos.
     fun cargarFacturasAdmin(estado: String? = _admin.value.estado, servicio: String? = _admin.value.servicio) {
         _admin.value = _admin.value.copy(cargando = true, estado = estado, servicio = servicio, error = null, abierto = true)
         viewModelScope.launch {
@@ -185,12 +182,12 @@ class BilleteraViewModel(
         }
     }
 
-    // El panel se cerró: ya no hace falta recargar con cada aviso.
+    // El administrador salió del panel: ya no se recarga la lista.
     fun cerrarAdmin() {
         _admin.value = _admin.value.copy(abierto = false)
     }
 
-    // Crea una factura. Si sale bien, recarga la lista para que aparezca.
+    // El laboratorio emite una factura nueva; luego se recarga la lista.
     suspend fun crearFactura(cedula: String, titular: String, servicio: String, periodo: String, monto: Double): Resultado<Factura> {
         val r = repositorio.crearFactura(cedula, titular, servicio, periodo, monto)
         if (r is Resultado.Exito) cargarFacturasAdmin()
@@ -198,9 +195,9 @@ class BilleteraViewModel(
         return r
     }
 
-    // Envía una operación al servidor (al confirmar un diálogo).
+    // El usuario aprieta Confirmar: se envía la operación y sale mensaje verde o rojo.
     fun ejecutarOperacion(solicitud: Solicitud) {
-        // Si ya hay una operación en curso, se ignora el nuevo toque (evita enviar dos veces la misma).
+        // Si ya hay una en curso, se ignora (no se envía dos veces).
         if (_estado.value is EstadoOperacion.Procesando) return
         viewModelScope.launch {
             logHilo("ViewModel: enviando ${solicitud.tipo.etiqueta} de ${solicitud.monto}")
@@ -208,7 +205,7 @@ class BilleteraViewModel(
             when (val resultado = repositorio.ejecutar(solicitud)) {
                 is Resultado.Exito -> {
                     _estado.value = EstadoOperacion.Exito(resultado.datos.mensaje)
-                    // Como en los bancos: al terminar bien, se muestra el COMPROBANTE de la operación.
+                    // Si salió bien, se abre el comprobante.
                     _comprobanteNuevo.value = resultado.datos.movimiento
                 }
                 is Resultado.Error -> manejarError(resultado)
@@ -217,50 +214,43 @@ class BilleteraViewModel(
     }
 
     // ---------------- COMPROBANTES ----------------
-    // Comprobante que la pantalla debe abrir sola tras una operación exitosa (null = ninguno).
+    // Comprobante que se abre solo tras una operación exitosa (null = ninguno).
     private val _comprobanteNuevo = MutableStateFlow<Movimiento?>(null)
     val comprobanteNuevo: StateFlow<Movimiento?> = _comprobanteNuevo.asStateFlow()
 
-    // La pantalla ya abrió el comprobante: lo quitamos para no abrirlo otra vez (ej. al rotar).
+    // El comprobante ya se abrió: se borra para que no se repita.
     fun comprobanteMostrado() {
         _comprobanteNuevo.value = null
     }
 
-    // La pantalla ya mostró el mensaje: volvemos a Inactivo para no mostrarlo otra vez.
+    // El mensaje ya se mostró: se borra para que no se repita.
     fun mensajeMostrado() {
         _estado.value = EstadoOperacion.Inactivo
     }
 
     // ---------------- PANEL DE PRUEBAS DE CONCURRENCIA ----------------
+    // Resultados de las pruebas (cuántas terminaron, qué hilos, tiempo).
     private val _pruebas = MutableStateFlow(EstadoPruebas())
     val pruebas: StateFlow<EstadoPruebas> = _pruebas.asStateFlow()
 
-    // Lanza N peticiones AL MISMO TIEMPO (red o Room) y registra qué hilo atendió cada una.
-    // Demuestra: red/BD en Dispatchers.IO (varios worker), respuestas de vuelta en main, y
-    // que la UI NO se congela (el reloj de la pantalla sigue corriendo mientras esto trabaja).
+    // Lanza N consultas a la vez y muestra qué hilo atendió cada una.
     fun lanzarConcurrentes(n: Int, tipo: TipoPrueba) {
         if (_pruebas.value.ejecutando) return
         _pruebas.value = EstadoPruebas(ejecutando = true, total = n)
-        viewModelScope.launch {                                   // Corrutina en el hilo main.
+        viewModelScope.launch {
             val t0 = System.currentTimeMillis()
-            // Estructuras SEGURAS ENTRE HILOS: muchas corrutinas las tocan a la vez.
-            // AtomicInteger.incrementAndGet() suma 1 de forma atómica (nunca se pierde una cuenta,
-            // a diferencia de "n++" con un Int normal).
-            val hilos = ConcurrentHashMap<String, Int>()          // Hilo IO -> nº de peticiones.
+            // Contadores seguros aunque muchas tareas los usen a la vez.
+            val hilos = ConcurrentHashMap<String, Int>()
             val completadas = AtomicInteger(0)
-            // Creamos N corrutinas hijas que se ejecutan EN PARALELO.
-            // map devuelve la lista de Job de cada launch, para luego esperarlos con joinAll().
+            // N tareas en paralelo.
             val trabajos = (1..n).map {
                 launch {
-                    // Cada una salta a Dispatchers.IO dentro del Repository (red o Room).
                     val r = when (tipo) {
                         TipoPrueba.SERVIDOR -> repositorio.consultaServidorEnHilo()
                         TipoPrueba.ROOM -> repositorio.lecturaRoomEnHilo()
                     }
-                    // merge: si el hilo no está, lo pone con 1; si ya está, le suma 1 (Int::plus).
-                    hilos.merge(r.hilo, 1, Int::plus)             // Contamos el hilo IO que la atendió.
+                    hilos.merge(r.hilo, 1, Int::plus)             // +1 al hilo que la atendió.
                     val hechas = completadas.incrementAndGet()
-                    // Este bloque corre de vuelta en main: actualizar la UI SIEMPRE en el hilo principal.
                     _pruebas.value = _pruebas.value.copy(
                         completadas = hechas,
                         hilos = hilos.toSortedMap(),
@@ -268,14 +258,13 @@ class BilleteraViewModel(
                     )
                 }
             }
-            trabajos.joinAll()                                    // Esperamos a que terminen todas.
+            trabajos.joinAll()                                    // Esperar a que terminen todas.
             _pruebas.value = _pruebas.value.copy(ejecutando = false, tiempoMs = System.currentTimeMillis() - t0)
             logHilo("Pruebas: $n peticiones ($tipo) atendidas por ${hilos.size} hilos de Dispatchers.IO")
         }
     }
 
-    // Lanza N TRANSFERENCIAS simultáneas a una cuenta (demo de dos pantallas del usuario laboratorio).
-    // En la otra pantalla (la cuenta destino) se ven llegar en tiempo real por WebSocket.
+    // Envía N transferencias a la vez a otra cuenta (se ven llegar en el otro teléfono).
     fun lanzarTransferencias(n: Int, destino: String, monto: Double) {
         if (_pruebas.value.ejecutando) return
         _pruebas.value = EstadoPruebas(ejecutando = true, total = n)
@@ -304,20 +293,13 @@ class BilleteraViewModel(
         }
     }
 
-    // CONTRASTE (lo que NO se debe hacer): bloquea el hilo main a propósito.
-    // La UI se congela unos segundos; sirve para explicar por qué el trabajo pesado va en IO.
-    // No usa corrutina: se llama directo desde el botón, que corre en main.
+    // Lo que NO se debe hacer: congela la app unos segundos a propósito.
     fun bloquearMainAPosta(segundos: Int) {
         logHilo("Pruebas: BLOQUEANDO el hilo main ${segundos}s (demostración de un ANR)")
         Thread.sleep(segundos * 1000L)
     }
 
-    // Deja el panel de pruebas en su estado inicial (sin resultados).
-    fun limpiarPruebas() {
-        _pruebas.value = EstadoPruebas()
-    }
-
-    // 401 = la sesión ya no vale -> volver al login. Cualquier otro error -> mensaje rojo.
+    // Si algo falla: sesión vencida (401) → volver al login; otro error → mensaje rojo.
     private fun manejarError(error: Resultado.Error, mostrar: Boolean = true) {
         when {
             error.codigoHttp == HTTP_NO_AUTORIZADO -> {
@@ -329,16 +311,14 @@ class BilleteraViewModel(
         }
     }
 
-    // ---------------- FÁBRICA (construcción manual, sin Hilt) ----------------
+    // ---------------- FÁBRICA ----------------
     companion object {
-        // Recibe la CUENTA de la sesión: cada usuario tiene su propio ViewModel y Repository.
-        // Android crea los ViewModel por nosotros (para que sobrevivan a la rotación); la FÁBRICA le
-        // dice CÓMO construir este, que necesita parámetros. Aquí se arma a mano: base de datos -> DAOs -> Repository.
+        // Le dice a Android cómo crear este ViewModel para una cuenta.
         fun factory(cuenta: String, onSesionInvalida: (String) -> Unit): ViewModelProvider.Factory = viewModelFactory {
             initializer {
-                // APPLICATION_KEY entrega la Application (contexto de toda la app); checkNotNull falla si no está.
                 val app = checkNotNull(this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY])
                 val db = BilleteraDatabase.obtener(app)
+                // Repository con la base de datos, la conexión en tiempo real y la cuenta.
                 val repositorio = BilleteraRepository(
                     movimientoDao = db.movimientoDao(),
                     cuentaDao = db.cuentaDao(),

@@ -1,4 +1,8 @@
-// Paquete de la autenticación.
+// =====================================================================
+//   La pantalla "Crear cuenta": el usuario escribe nombre, usuario y
+//   contraseña, y recibe una cuenta nueva con $100 de regalo.
+// =====================================================================
+
 package com.example.carriel_cuenca_billeteradistribuida.ui.auth
 
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -29,16 +33,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.carriel_cuenca_billeteradistribuida.ui.theme.VerdeIngreso
 
-// Mismas reglas que el servidor (validar aquí evita un viaje de red; el servidor valida igual).
-// Regex = expresión regular: describe qué forma debe tener un texto.
-// Usuario: de 4 a 20 caracteres, solo minúsculas, números o "_" (^ y $ = de principio a fin).
+// Reglas de formato (las mismas del servidor). Usuario: 4 a 20 minúsculas, números o "_".
 private val PATRON_USUARIO = Regex("^[a-z0-9_]{4,20}$")
-// (?=.*[A-Za-z]) = "debe haber al menos una letra"; (?=.*\\d) = "al menos un número".
+// Contraseña: al menos 6 caracteres, con al menos una letra y un número.
 private val PATRON_PASSWORD = Regex("^(?=.*[A-Za-z])(?=.*\\d).{6,50}$")   // 6+ caracteres, con letra y número.
 
-// PANTALLA DE REGISTRO: crea un usuario con su propia cuenta y $100 de bienvenida.
-// La pantalla NO llama al servidor: solo junta los datos y se los pasa a quien la usa (AppRaiz)
-// mediante las lambdas "on...". Así la UI queda separada de la lógica (que está en el ViewModel).
+// PANTALLA DE REGISTRO: junta los datos y se los entrega al SesionViewModel.
 @Composable
 fun RegistroScreen(
     procesando: Boolean,                          // true = esperando al servidor (se desactivan los botones).
@@ -47,18 +47,17 @@ fun RegistroScreen(
     onIrALogin: () -> Unit,                       // Volver a la pantalla de inicio de sesión.
     onEscribir: () -> Unit                        // Al escribir, se borra el mensaje anterior.
 ) {
-    // Un estado por campo de texto. remember = se conserva entre redibujados.
-    // "by" = delegado: permite usar "nombre" directamente en vez de "nombre.value".
+    // Lo que el usuario va escribiendo en cada campo (la pantalla lo recuerda).
     var nombre by remember { mutableStateOf("") }
     var usuario by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmar by remember { mutableStateOf("") }
-    // Error de validación local (null = todo bien).
+    // Mensaje de error de los datos escritos (null = todo bien).
     var error by remember { mutableStateOf<String?>(null) }
 
-    // Valida y, si está todo bien, envía. Función local.
+    // Revisa los datos y, si todo está bien, envía el registro.
     fun enviar() {
-        // "when" sin argumento = cadena de if/else: se queda con el PRIMER caso que sea verdadero.
+        // Se revisa en orden y se muestra el primer problema encontrado.
         error = when {
             nombre.trim().length < 3 -> "Escribe tu nombre completo"
             !PATRON_USUARIO.matches(usuario) -> "Usuario: de 4 a 20 letras minúsculas, números o _"
@@ -66,14 +65,14 @@ fun RegistroScreen(
             password != confirmar -> "Las contraseñas no coinciden"
             else -> null
         }
-        // Solo si no hubo errores se envía al ViewModel (trim() quita espacios al inicio y al final).
+        // Solo si no hubo errores se envía (al nombre se le quitan los espacios sobrantes).
         if (error == null) onRegistrar(nombre.trim(), usuario, password)
     }
 
-    // Reutiliza el encabezado azul de LoginScreen; lo que va entre { } son los campos del formulario.
+    // Usa el mismo encabezado azul del Login; debajo van los campos del formulario.
     EncabezadoAcceso(titulo = "Crear cuenta", subtitulo = "Recibirás $ 100.00 de bienvenida") {
-        // En cada campo: guardar lo escrito, borrar el error local y avisar que se está escribiendo.
-        // ImeAction.Next = la tecla del teclado pasa al SIGUIENTE campo.
+        // En cada campo: se guarda lo escrito, se borra el error y se avisa que el usuario está escribiendo.
+        // La tecla "Siguiente" del teclado pasa al próximo campo.
         OutlinedTextField(
             value = nombre,
             onValueChange = { nombre = it; error = null; onEscribir() },
@@ -112,8 +111,7 @@ fun RegistroScreen(
             leadingIcon = { Icon(Icons.Filled.Lock, contentDescription = null) },
             visualTransformation = PasswordVisualTransformation(),
             singleLine = true,
-            // Con contraseñas iguales y no vacías, se marca en verde.
-            // isError = true pinta el campo en ROJO (si ya se escribió algo y no coincide).
+            // El campo se pinta de rojo si ya se escribió algo y no coincide con la contraseña.
             isError = confirmar.isNotEmpty() && confirmar != password,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
             modifier = Modifier.fillMaxWidth()
@@ -121,8 +119,8 @@ fun RegistroScreen(
         // Mensaje verde de confirmación cuando ambas contraseñas son iguales.
         if (confirmar.isNotEmpty() && confirmar == password) Text("✔ Las contraseñas coinciden", color = VerdeIngreso, fontSize = 12.sp)
 
-        // Primero el error local; si no hay, el mensaje del servidor (ej. "El usuario ya está registrado").
-        // Se copia a "local" porque Kotlin no deja asumir que una variable "var" delegada sigue sin ser null.
+        // Primero se muestra el error de los datos escritos; si no hay, el mensaje del servidor
+        // (ej. "El usuario ya está registrado").
         val local = error
         if (local != null) MensajeAcceso(local, esError = true)
         else mensaje?.let { MensajeAcceso(it.texto, it.esError) }

@@ -1,24 +1,22 @@
-// Paquete de los modelos de datos.
+// =====================================================================
+//   En qué paso está la operación que pidió el usuario: sin hacer nada,
+//   procesando, salió bien o falló.
+// =====================================================================
+
 package com.example.carriel_cuenca_billeteradistribuida.model
 
-// "sealed class" (clase SELLADA) = una familia CERRADA de clases.
-// Es como un enum, pero cada opción puede llevar sus PROPIOS datos:
-// Exito lleva un mensaje, Error lleva otro mensaje, Inactivo no lleva nada.
-// Como la familia está cerrada, un "when" sobre EstadoOperacion
-// obliga a contemplar TODOS los casos (el compilador lo verifica).
+// Los 4 pasos posibles. Exito y Error llevan un mensaje para el usuario.
 sealed class EstadoOperacion {
 
-    // "data object" = una opción SIN datos (solo existe una instancia).
-    // No hay ninguna operación en curso ni mensaje que mostrar.
+    // No hay ninguna operación en curso.
     data object Inactivo : EstadoOperacion()
 
-    // Hay una operación en curso (esperando a Room o, más adelante, al servidor).
-    // (Hoy espera la respuesta del servidor; mientras tanto se ignoran nuevos envíos.)
+    // Esperando al servidor: se ve la ruedita y el botón queda bloqueado.
     data object Procesando : EstadoOperacion()
 
-    // La operación terminó bien. "data class" = opción CON datos.
+    // Salió bien: se muestra el mensaje (ej. "Depósito realizado").
     data class Exito(val mensaje: String) : EstadoOperacion()
 
-    // La operación falló (ej. en la Fase 4: "Saldo insuficiente").
+    // Falló: se muestra el motivo (ej. "Saldo insuficiente").
     data class Error(val mensaje: String) : EstadoOperacion()
 }

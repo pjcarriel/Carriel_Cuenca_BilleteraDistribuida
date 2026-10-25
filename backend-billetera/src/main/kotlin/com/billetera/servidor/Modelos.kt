@@ -1,77 +1,74 @@
-// Paquete del servidor.
+// =====================================================================
+//   Define la FORMA de los datos que viajan entre la app y el servidor
+//   (lo que la app pide y lo que el servidor responde) y los errores.
+// =====================================================================
+
 package com.billetera.servidor
 
-import io.ktor.http.HttpStatusCode           // Códigos HTTP (200, 400, 401, 404, 409...).
-import kotlinx.serialization.Serializable    // Marca una clase como convertible a/desde JSON.
+import io.ktor.http.HttpStatusCode
+import kotlinx.serialization.Serializable
 
-// =====================================================================
-// AUTENTICACIÓN
-// =====================================================================
+// ======================== REGISTRO E INICIO DE SESIÓN ========================
 
-// POST /auth/registro   {"usuario":"maria","nombre":"María López","password":"clave123"}
+// Datos para crear una cuenta: usuario, nombre y contraseña.
 @Serializable
 data class RegistroRequest(val usuario: String, val nombre: String, val password: String)
 
-// POST /auth/login   {"usuario":"pamela","password":"demo123"}
+// Datos para iniciar sesión: usuario y contraseña.
 @Serializable
 data class LoginRequest(val usuario: String, val password: String)
 
-// Respuesta de registro y login: el TOKEN más los datos de la cuenta.
+// Respuesta al entrar: el token (pase) y los datos de la cuenta.
 @Serializable
 data class SesionRespuesta(
-    val token: String,              // Se envía en cada petición: Authorization: Bearer <token>
+    val token: String,
     val usuario: String,
     val nombre: String,
-    val cuenta: String,             // Número de cuenta asignado.
+    val cuenta: String,
     val saldo: Double,
-    val minutosInactividad: Int     // Tras cuántos minutos sin actividad expira la sesión.
+    val minutosInactividad: Int
 )
 
-// Quién hizo la petición (lo obtenemos del token; NO viaja en el JSON).
-// No lleva @Serializable porque nunca se convierte a JSON: solo se usa dentro del servidor.
+// Quién hizo la petición (sale del token). Solo se usa dentro del servidor.
 data class SesionUsuario(val usuarioId: Long, val usuario: String, val nombre: String, val cuenta: String)
 
-// =====================================================================
-// OPERACIONES (la cuenta de ORIGEN siempre sale del token)
-// =====================================================================
+// ======================== OPERACIONES ========================
 
-// POST /depositar  y  POST /retirar   {"monto": 50.0}
+// Pedido de DEPÓSITO o RETIRO: solo hace falta saber cuánto.
 @Serializable
 data class MontoRequest(val monto: Double)
 
-// POST /transferir   {"cuentaDestino":"1001","monto":25.0}
+// Pedido de TRANSFERENCIA: a qué cuenta y cuánto.
 @Serializable
 data class TransferenciaRequest(val cuentaDestino: String, val monto: Double)
 
-// POST /pagar-servicio   {"servicio":"LUZ","contrato":"445566"}  (el monto lo pone la FACTURA)
+// Pedido de PAGO DE SERVICIO: qué servicio y qué contrato (el monto sale de la factura).
 @Serializable
 data class PagoServicioRequest(val servicio: String, val contrato: String)
 
-// GET /mi-cuenta
+// Datos de la cuenta del usuario: número, dueño y saldo.
 @Serializable
 data class CuentaRespuesta(val numero: String, val titular: String, val saldo: Double)
 
-// GET /cuentas/{numero}: solo el titular (para confirmar a quién se transfiere; nunca el saldo ajeno).
+// Dueño de otra cuenta, para confirmar a quién se transfiere (nunca su saldo).
 @Serializable
 data class DestinatarioRespuesta(val numero: String, val titular: String)
 
-// GET /contratos/{codigo}: la factura de un servicio básico.
+// Una FACTURA de servicio básico. Los últimos datos solo aparecen si existen.
 @Serializable
 data class ContratoRespuesta(
     val codigo: String,
-    val servicio: String,           // "LUZ", "AGUA" o "INTERNET".
+    val servicio: String,
     val titular: String,
-    val monto: Double,              // Lo que se debe pagar.
+    val monto: Double,
     val pagado: Boolean,
-    // Campos de la Fase 8 (con valor por defecto null: si faltan, el JSON simplemente no los incluye).
-    val cedula: String? = null,     // Cédula del titular (ej. "1712345675").
-    val periodo: String? = null,    // Mes facturado (ej. "Octubre 2026").
-    val pagadoPor: String? = null,  // Cuenta que la pagó (solo si pagado = true).
-    val fechaPago: Long? = null     // Cuándo se pagó, en milisegundos (solo si pagado = true).
+    val cedula: String? = null,
+    val periodo: String? = null,
+    val pagadoPor: String? = null,
+    val fechaPago: Long? = null
 )
 
-// POST /admin/facturas (solo laboratorio): crear una factura nueva.
-// {"cedula":"1712345675","titular":"Pamela Carriel","servicio":"LUZ","periodo":"Diciembre 2026","monto":31.5}
+// Datos para emitir una factura nueva (solo el laboratorio).
 @Serializable
 data class NuevaFacturaRequest(
     val cedula: String,
@@ -81,33 +78,31 @@ data class NuevaFacturaRequest(
     val monto: Double
 )
 
-// Un servicio del catálogo: GET /servicios.  {"codigo":"LUZ","nombre":"Luz eléctrica","icono":"RAYO"}
+// Un servicio del catálogo (ej. LUZ, "Luz eléctrica", ícono RAYO).
 @Serializable
 data class ServicioRespuesta(val codigo: String, val nombre: String, val icono: String)
 
-// POST /admin/servicios (solo laboratorio): agregar un servicio.  {"codigo":"GAS","nombre":"Gas doméstico","icono":"GAS"}
+// Datos para agregar un servicio nuevo (solo el laboratorio).
 @Serializable
 data class NuevoServicioRequest(val codigo: String, val nombre: String, val icono: String)
 
-// Aviso simple por WebSocket (ej. al laboratorio: "FACTURAS_ACTUALIZADAS" cuando alguien paga).
+// Aviso sencillo al laboratorio (ej. "FACTURAS_ACTUALIZADAS").
 @Serializable
 data class EventoAviso(val tipo: String, val detalle: String? = null)
 
-// Respuesta de toda operación exitosa.
+// Respuesta cuando una operación sale bien: comprobante y saldo nuevo.
 @Serializable
 data class OperacionRespuesta(
     val transaccionId: Long,
     val tipo: String,
     val cuenta: String,
     val monto: Double,
-    val saldo: Double,              // SALDO NUEVO de la cuenta tras la operación.
+    val saldo: Double,
     val fecha: Long,
     val mensaje: String
 )
 
-// GET /movimientos: un comprobante visto desde la cuenta del usuario.
-// tipo usa los MISMOS nombres que el enum de la app: DEPOSITO, RETIRO, TRANSFERENCIA_ENVIADA,
-// TRANSFERENCIA_RECIBIDA, PAGO_SERVICIO.
+// Un movimiento del historial, visto desde la cuenta del usuario.
 @Serializable
 data class MovimientoRespuesta(
     val transaccionId: Long,
@@ -115,67 +110,62 @@ data class MovimientoRespuesta(
     val monto: Double,
     val fecha: Long,
     val detalle: String,
-    val categoria: String? = null   // Solo los pagos: "Servicio Básico".
+    val categoria: String? = null
 )
 
-// Mensaje que el servidor ENVÍA por WebSocket.
+// Aviso en tiempo real para el celular (ej. "te llegó una transferencia").
 @Serializable
 data class EventoWebSocket(
-    val tipo: String,               // "CONECTADO" o "TRANSFERENCIA_RECIBIDA".
+    val tipo: String,
     val cuenta: String,
     val saldo: Double,
     val cuentaOrigen: String? = null,
     val monto: Double? = null,
     val transaccionId: Long? = null,
-    val detalle: String? = null,    // Ej. "De Usuario Postman A (1002)".
+    val detalle: String? = null,
     val fecha: Long = System.currentTimeMillis()
 )
 
-// Mensaje por WebSocket SOLO para el laboratorio: cuántos nodos (dispositivos) están conectados.
-// Ej. {"tipo":"CONEXIONES","total":3,"cuentas":["1001","1002","9999"]}
+// Aviso al laboratorio: cuántos celulares están conectados y de qué cuentas.
 @Serializable
 data class EventoConexiones(
     val tipo: String = "CONEXIONES",
-    val total: Int,                 // Dispositivos con el WebSocket abierto (una cuenta puede tener varios).
-    val cuentas: List<String>       // Cuentas distintas conectadas, ordenadas.
+    val total: Int,
+    val cuentas: List<String>
 )
 
-// Cuerpo JSON de una respuesta de ERROR.
+// Forma de una respuesta de error: un código y un mensaje.
 @Serializable
 data class ErrorRespuesta(val codigo: String, val mensaje: String)
 
-// =====================================================================
-// ERRORES DE NEGOCIO: excepción que ya sabe su código HTTP
-// =====================================================================
-// Hereda de Exception, así que se puede lanzar con "throw". StatusPages (Application.kt) la atrapa
-// y responde con "estado" y un JSON {"codigo": ..., "mensaje": ...}.
-// "override val message" reemplaza el mensaje estándar de Exception por el nuestro.
+// ======================== ERRORES ========================
+
+// Un error que ya sabe qué código devolver (400, 401, 404...). Application.kt lo responde a la app.
 class ErrorNegocio(
     val estado: HttpStatusCode,
     val codigo: String,
     override val message: String
 ) : Exception(message)
 
-// Funciones "fábrica": cada una CREA (no lanza) el error; quien la usa escribe "throw montoInvalido()".
-// --- 400: datos inválidos ---
+// Lista de errores posibles. Se usan así: throw montoInvalido()
+// 400: datos mal enviados.
 fun montoInvalido() = ErrorNegocio(HttpStatusCode.BadRequest, "MONTO_INVALIDO", "El monto debe ser mayor que 0")
 fun datoInvalido(mensaje: String) = ErrorNegocio(HttpStatusCode.BadRequest, "DATO_INVALIDO", mensaje)
-// --- 401: sin sesión válida ---
+// 401: no hay sesión válida.
 fun noAutenticado() = ErrorNegocio(HttpStatusCode.Unauthorized, "NO_AUTENTICADO", "Debes iniciar sesión")
 fun sesionExpirada() = ErrorNegocio(HttpStatusCode.Unauthorized, "SESION_EXPIRADA",
     "Tu sesión se cerró por inactividad. Inicia sesión de nuevo")
-// Mensaje genérico a propósito: no revelamos si falló el usuario o la contraseña.
 fun credencialesInvalidas() = ErrorNegocio(HttpStatusCode.Unauthorized, "CREDENCIALES_INVALIDAS", "Usuario o contraseña incorrectos")
-// --- 404: no existe ---
+// 404: no existe.
 fun cuentaNoExiste(numero: String) = ErrorNegocio(HttpStatusCode.NotFound, "CUENTA_NO_EXISTE", "La cuenta $numero no existe")
 fun contratoNoExiste(codigo: String) = ErrorNegocio(HttpStatusCode.NotFound, "CONTRATO_NO_EXISTE", "El contrato $codigo no existe")
-// --- 409: choca con el estado actual ---
+// 409: no se puede ahora (ej. no alcanza el saldo).
 fun saldoInsuficiente(saldo: Double, monto: Double) = ErrorNegocio(HttpStatusCode.Conflict, "SALDO_INSUFICIENTE",
     "Saldo insuficiente: tienes $saldo y se requieren $monto")
 fun usuarioExiste(usuario: String) = ErrorNegocio(HttpStatusCode.Conflict, "USUARIO_EXISTE", "El usuario '$usuario' ya está registrado")
-// --- 403: tiene sesión, pero NO tiene permiso (ej. administrar servicios sin ser el laboratorio) ---
+// 403: tiene sesión, pero no tiene permiso.
 fun sinPermiso() = ErrorNegocio(HttpStatusCode.Forbidden, "SIN_PERMISO", "Solo el usuario laboratorio puede administrar los servicios")
-// --- 400: cédula que no cumple el algoritmo ecuatoriano ---
+// Cédula inválida, servicio repetido o factura ya pagada.
 fun cedulaInvalida() = ErrorNegocio(HttpStatusCode.BadRequest, "CEDULA_INVALIDA", "La cédula no es válida")
 fun servicioExiste(codigo: String) = ErrorNegocio(HttpStatusCode.Conflict, "SERVICIO_EXISTE", "Ya existe un servicio con el código $codigo")
 fun facturaPagada(codigo: String) = ErrorNegocio(HttpStatusCode.Conflict, "FACTURA_PAGADA", "La factura del contrato $codigo ya fue pagada")

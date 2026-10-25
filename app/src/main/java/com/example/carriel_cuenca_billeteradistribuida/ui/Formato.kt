@@ -1,39 +1,37 @@
-// Paquete de la interfaz gráfica.
+// =====================================================================
+//   Son "traductores" de datos a texto bonito: convierten montos y fechas
+//   en algo que el usuario entiende ("$ 1,250.75", "Hoy", "17/10/2026 10:30").
+// =====================================================================
+
 package com.example.carriel_cuenca_billeteradistribuida.ui
 
-import java.time.Instant                       // Un instante en el tiempo.
-import java.time.LocalDate                      // Una fecha (sin hora).
-import java.time.ZoneId                        // Zona horaria.
-import java.time.format.DateTimeFormatter      // Formato de fecha.
-import java.util.Locale                        // Configuración regional (separadores de miles).
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
-// FUNCIONES DE FORMATO usadas por varias pantallas (no dibujan nada, solo convierten a texto).
-
-// Convierte 1250.75 en "$ 1,250.75" (2 decimales y separador de miles).
+// Monto como dinero: 1250.75 -> "$ 1,250.75".
 fun formatearMonto(monto: Double): String =
-    // "%,.2f": la "," agrega separador de miles y ".2f" deja 2 decimales.
-    // Locale.US asegura "," para miles y "." para decimales, sin importar el idioma del teléfono.
     "$ " + String.format(Locale.US, "%,.2f", monto)
 
-// Formato de fecha: día/mes/año hora:minuto. Ej: "17/10/2026 10:30".
-// "private val": el formateador se crea UNA sola vez y se reutiliza en cada llamada.
+// Molde de fecha con hora: "17/10/2026 10:30".
 private val formatoFecha = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
 
-// Convierte milisegundos (Long) en un texto de fecha legible, en la zona horaria del teléfono.
+// Fecha y hora de un movimiento, con la hora del teléfono.
 fun formatearFecha(milisegundos: Long): String =
-    Instant.ofEpochMilli(milisegundos)          // Milisegundos -> instante en el tiempo.
-        .atZone(ZoneId.systemDefault())         // Instante -> fecha/hora local del teléfono.
-        .format(formatoFecha)                   // Fecha/hora -> texto.
+    Instant.ofEpochMilli(milisegundos)
+        .atZone(ZoneId.systemDefault())
+        .format(formatoFecha)
 
-// El día (fecha sin hora) de unos milisegundos, en la zona del teléfono. Sirve para agrupar el historial.
+// Solo el día (sin hora): sirve para agrupar el historial por días.
 fun diaDe(milisegundos: Long): LocalDate =
     Instant.ofEpochMilli(milisegundos).atZone(ZoneId.systemDefault()).toLocalDate()
 
-// Formato solo de día (sin hora), para la etiqueta del filtro.
+// Molde de fecha sin hora: "17/10/2026".
 private val formatoDia = DateTimeFormatter.ofPattern("dd/MM/yyyy")
 
-// Etiqueta amigable de un día: "Hoy", "Ayer" o la fecha. Se muestra en el filtro del historial.
-// "when (dia)" compara el día con cada caso: LocalDate.now() = hoy; minusDays(1) = ayer.
+// Texto del filtro del historial: "Hoy", "Ayer" o la fecha.
 fun etiquetaDia(dia: LocalDate): String = when (dia) {
     LocalDate.now() -> "Hoy"
     LocalDate.now().minusDays(1) -> "Ayer"

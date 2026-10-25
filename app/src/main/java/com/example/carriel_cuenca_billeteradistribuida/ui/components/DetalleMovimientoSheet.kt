@@ -1,4 +1,8 @@
-// Paquete de componentes reutilizables.
+// =====================================================================
+//   El panel que sube desde abajo al tocar un movimiento del historial:
+//   muestra sus datos y el botón "Ver comprobante".
+// =====================================================================
+
 package com.example.carriel_cuenca_billeteradistribuida.ui.components
 
 import androidx.compose.foundation.background
@@ -36,10 +40,8 @@ import com.example.carriel_cuenca_billeteradistribuida.ui.formatearMonto
 import com.example.carriel_cuenca_billeteradistribuida.ui.theme.RojoEgreso
 import com.example.carriel_cuenca_billeteradistribuida.ui.theme.VerdeIngreso
 
-// PANEL MODAL DE DETALLE de un movimiento (sube desde abajo, como en las apps de los bancos):
-// muestra la descripción de la operación y el botón "Ver comprobante".
-// Así la lista del historial se mantiene compacta aunque haya muchos movimientos.
-// Se cierra deslizándolo hacia abajo, tocando fuera o con "atrás".
+// Panel de detalle de un movimiento, con el botón "Ver comprobante".
+// Se cierra deslizándolo hacia abajo o tocando fuera.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DetalleMovimientoSheet(
@@ -47,9 +49,10 @@ fun DetalleMovimientoSheet(
     onVerComprobante: () -> Unit,       // Abre el comprobante completo (el que se comparte).
     onCerrar: () -> Unit
 ) {
+    // Verde y "+" si el dinero entra; rojo y "-" si sale.
     val colorMonto = if (movimiento.tipo.esIngreso) VerdeIngreso else RojoEgreso
     val signo = if (movimiento.tipo.esIngreso) "+" else "-"
-    // skipPartiallyExpanded: el panel se abre completo de una vez (no a la mitad).
+    // El panel se abre completo de una vez (no a la mitad).
     val estadoPanel = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     ModalBottomSheet(onDismissRequest = onCerrar, sheetState = estadoPanel) {

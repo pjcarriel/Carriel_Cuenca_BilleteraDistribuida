@@ -1,15 +1,18 @@
-// Paquete de los modelos de datos.
+// =====================================================================
+//   Los servicios básicos que se pueden pagar (luz, agua, internet y
+//   los que agregue el laboratorio).
+// =====================================================================
+
 package com.example.carriel_cuenca_billeteradistribuida.model
 
-// Un SERVICIO BÁSICO del catálogo del servidor (luz, agua, internet... y los que agregue el laboratorio).
+// Un servicio del catálogo: código, nombre e ícono.
 data class Servicio(
-    val codigo: String,     // Código corto en mayúsculas (ej. "LUZ", "GAS"). Es lo que se guarda en cada factura.
-    val nombre: String,     // Nombre para mostrar (ej. "Gas doméstico").
-    val icono: String       // Clave del ícono: RAYO, GOTA, WIFI, TELEFONO, GAS, TV, BASURA u OTRO.
+    val codigo: String,     // Código corto (ej. "LUZ", "GAS"). Se guarda en cada factura.
+    val nombre: String,     // Nombre que ve el usuario (ej. "Gas doméstico").
+    val icono: String       // Qué dibujito mostrar: RAYO, GOTA, WIFI, TELEFONO, GAS, TV, BASURA u OTRO.
 )
 
-// Servicios que existen desde el inicio. Se usan si todavía no se pudo descargar el catálogo
-// (por ejemplo, sin conexión), para que el diálogo de pago siempre tenga opciones.
+// Los 3 servicios de siempre. Se usan si todavía no se descargó el catálogo (ej. sin internet).
 val SERVICIOS_BASE = listOf(
     Servicio("LUZ", "Luz eléctrica", "RAYO"),
     Servicio("AGUA", "Agua potable", "GOTA"),

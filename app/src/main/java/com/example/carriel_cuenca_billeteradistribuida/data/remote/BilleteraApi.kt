@@ -1,4 +1,8 @@
-// Paquete de comunicación con el servidor.
+// =====================================================================
+//   Es el "MENÚ" del servidor: la lista de todo lo que la app le puede
+//   pedir (iniciar sesión, ver saldo, depositar, transferir, pagar...).
+// =====================================================================
+
 package com.example.carriel_cuenca_billeteradistribuida.data.remote
 
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.ContratoDto
@@ -14,70 +18,84 @@ import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.PagoServi
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.RegistroRequest
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.SesionDto
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.dto.TransferenciaRequest
-import retrofit2.Response        // Respuesta "cruda" (para el logout, que no devuelve cuerpo).
-import retrofit2.http.Body       // El parámetro se envía como JSON en el cuerpo.
+import retrofit2.Response        // Respuesta completa (para el logout, que no devuelve datos).
+import retrofit2.http.Body       // Los datos se envían como JSON.
 import retrofit2.http.GET
 import retrofit2.http.POST
-import retrofit2.http.Path       // Reemplaza un {trozo} de la URL.
-import retrofit2.http.Query      // Agrega "?nombre=valor" a la URL.
+import retrofit2.http.Path       // Pone un valor dentro de la dirección.
+import retrofit2.http.Query      // Agrega "?nombre=valor" a la dirección.
 
-// INTERFAZ DE RETROFIT: los endpoints del servidor como funciones Kotlin "suspend".
-// El token NO aparece aquí: lo añade AuthInterceptor a todas las peticiones.
-// Si el servidor responde 4xx/5xx, Retrofit lanza HttpException (se atrapa en llamarServidor).
-// Con "suspend", Retrofit hace la petición en los hilos de OkHttp y la corrutina espera sin bloquear.
-// La ruta de cada anotación (ej. "mi-cuenta") se suma a la URL base de RetrofitClient.
+// Pedidos al servidor: @GET = pedir datos, @POST = enviar datos.
+// El token lo agrega AuthInterceptor; "suspend" = espera sin congelar la pantalla.
 interface BilleteraApi {
 
-    // ---------- Autenticación (públicas) ----------
+    // ---------- Inicio de sesión (sin token) ----------
+
+    // Entrar con usuario y contraseña; devuelve el token y los datos de la cuenta.
     @POST("auth/login")
     suspend fun login(@Body cuerpo: LoginRequest): SesionDto
 
+    // Crear una cuenta nueva.
     @POST("auth/registro")
     suspend fun registrar(@Body cuerpo: RegistroRequest): SesionDto
 
-    // Responde 204 (sin cuerpo): por eso devolvemos Response<Unit>.
+    // Cerrar sesión (el servidor no devuelve datos).
     @POST("auth/logout")
     suspend fun logout(): Response<Unit>
 
-    // ---------- Protegidas (llevan token) ----------
+    // ---------- Con sesión iniciada (llevan token) ----------
+
+    // Mi cuenta: número, titular y saldo.
     @GET("mi-cuenta")
     suspend fun miCuenta(): CuentaDto
 
+    // Mi historial de movimientos.
     @GET("movimientos")
     suspend fun movimientos(): List<MovimientoDto>
 
-    // GET /contratos/445566?servicio=LUZ
+    // Buscar una factura por contrato. Ej: /contratos/445566?servicio=LUZ
     @GET("contratos/{codigo}")
     suspend fun consultarContrato(@Path("codigo") codigo: String, @Query("servicio") servicio: String): ContratoDto
 
-    // GET /facturas?cedula=1712345675&servicio=LUZ -> facturas de esa cédula (pendientes primero).
+    // Buscar las facturas de una cédula. Ej: /facturas?cedula=1712345675&servicio=LUZ
     @GET("facturas")
     suspend fun facturasPorCedula(@Query("cedula") cedula: String, @Query("servicio") servicio: String): List<ContratoDto>
 
-    // ---------- Administración de servicios (solo laboratorio; otra cuenta recibe 403) ----------
-    // "String?" en @Query: si es null, Retrofit no agrega ese parámetro a la URL.
+    // ---------- Solo laboratorio (otra cuenta recibe error 403) ----------
+
+    // Todas las facturas, con filtros opcionales por estado y servicio.
     @GET("admin/facturas")
     suspend fun adminFacturas(@Query("estado") estado: String?, @Query("servicio") servicio: String?): List<ContratoDto>
 
+    // Emitir una factura nueva.
     @POST("admin/facturas")
     suspend fun crearFactura(@Body cuerpo: NuevaFacturaRequest): ContratoDto
 
     // ---------- Catálogo de servicios ----------
+
+    // Servicios que se pueden pagar (luz, agua...).
     @GET("servicios")
     suspend fun servicios(): List<ServicioDto>
 
-    @POST("admin/servicios")                                 // Solo laboratorio.
+    // Agregar un servicio al catálogo (solo laboratorio).
+    @POST("admin/servicios")
     suspend fun crearServicio(@Body cuerpo: NuevoServicioRequest): ServicioDto
 
+    // ---------- Operaciones con dinero ----------
+
+    // Depositar dinero en mi cuenta.
     @POST("depositar")
     suspend fun depositar(@Body cuerpo: MontoRequest): OperacionRespuestaDto
 
+    // Retirar dinero de mi cuenta.
     @POST("retirar")
     suspend fun retirar(@Body cuerpo: MontoRequest): OperacionRespuestaDto
 
+    // Enviar dinero a otra cuenta.
     @POST("transferir")
     suspend fun transferir(@Body cuerpo: TransferenciaRequest): OperacionRespuestaDto
 
+    // Pagar la factura de un servicio.
     @POST("pagar-servicio")
     suspend fun pagarServicio(@Body cuerpo: PagoServicioRequest): OperacionRespuestaDto
 }

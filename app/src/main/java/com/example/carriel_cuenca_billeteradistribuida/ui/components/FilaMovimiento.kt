@@ -1,4 +1,8 @@
-// Paquete de componentes reutilizables.
+// =====================================================================
+//   Cada fila del historial (ícono, tipo, fecha y monto en verde o rojo)
+//   y los íconos de cada operación y de cada servicio (luz, agua...).
+// =====================================================================
+
 package com.example.carriel_cuenca_billeteradistribuida.ui.components
 
 import androidx.compose.foundation.background
@@ -46,20 +50,16 @@ import com.example.carriel_cuenca_billeteradistribuida.ui.formatearMonto
 import com.example.carriel_cuenca_billeteradistribuida.ui.theme.RojoEgreso
 import com.example.carriel_cuenca_billeteradistribuida.ui.theme.VerdeIngreso
 
-// FILA DEL HISTORIAL: ícono, tipo, (categoría), detalle, fecha/hora y monto en verde o rojo.
-// Es COMPACTA a propósito (la lista puede tener muchos movimientos): al tocarla se abre un panel
-// modal con la descripción y el botón "Ver comprobante" (DetalleMovimientoSheet.kt).
-// @Composable = función que DIBUJA interfaz; Compose la vuelve a llamar cuando cambian sus datos.
+// Una fila del historial. Al tocarla se abre el panel de detalle.
 @Composable
 fun FilaMovimiento(movimiento: Movimiento, onClick: () -> Unit = {}) {   // onClick: abre el panel de detalle.
     // Color y signo según si el dinero entra o sale.
     val colorMonto = if (movimiento.tipo.esIngreso) VerdeIngreso else RojoEgreso
     val signo = if (movimiento.tipo.esIngreso) "+" else "-"
 
-    // Card con onClick: toda la tarjeta se puede TOCAR (con efecto de onda).
+    // Toda la tarjeta se puede tocar.
     Card(onClick = onClick, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp)) {
         Row(
-            // Modifier: cadena de ajustes (tamaño, márgenes, fondo...) que se aplican EN ORDEN.
             modifier = Modifier
                 .fillMaxWidth()                                 // Ocupa todo el ancho.
                 .padding(12.dp),                                // Margen interno de 12 dp.
@@ -70,16 +70,16 @@ fun FilaMovimiento(movimiento: Movimiento, onClick: () -> Unit = {}) {   // onCl
                 modifier = Modifier
                     .size(44.dp)
                     .clip(CircleShape)                          // Recorta en forma de círculo.
-                    .background(colorMonto.copy(alpha = 0.12f)),  // alpha 0.12 = casi transparente.
+                    .background(colorMonto.copy(alpha = 0.12f)),  // Mismo color, casi transparente.
                 contentAlignment = Alignment.Center
             ) {
                 Icon(iconoDe(movimiento), contentDescription = movimiento.tipo.etiqueta, tint = colorMonto)
             }
             Spacer(Modifier.width(12.dp))                       // Espacio entre el ícono y los textos.
             // Columna central: tipo, categoría (solo servicios), detalle y fecha.
-            Column(modifier = Modifier.weight(1f)) {            // weight(1f): ocupa todo el espacio que sobra.
+            Column(modifier = Modifier.weight(1f)) {            // Ocupa todo el espacio que sobra.
                 Text(movimiento.tipo.etiqueta, fontWeight = FontWeight.SemiBold)
-                // NULL SAFETY: "?.let" solo dibuja la categoría si NO es null ("Servicio Básico").
+                // La categoría solo se muestra si existe (los pagos de servicio la tienen).
                 movimiento.categoria?.let { categoria ->
                     Text(categoria, color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
                 }
@@ -94,13 +94,13 @@ fun FilaMovimiento(movimiento: Movimiento, onClick: () -> Unit = {}) {   // onCl
     }
 }
 
-// Ícono de una fila del historial. En los pagos de servicio, el detalle empieza con el nombre
-// del servicio ("AGUA - Contrato 778899"), así que tomamos la primera palabra.
+// Elige el ícono de un movimiento del historial. En los pagos de servicio el detalle
+// empieza con el nombre del servicio ("AGUA - Contrato 778899"), así que se toma la primera palabra.
 fun iconoDe(movimiento: Movimiento): ImageVector =
     iconoDeTipo(movimiento.tipo, servicio = movimiento.detalle.substringBefore(" "))
 
-// Ícono según el tipo de operación. Los pagos de servicio usan un ícono SEGÚN el servicio,
-// así el "Servicio Básico" se distingue a simple vista. "servicio: String = """ = parámetro opcional.
+// Elige el ícono según el tipo de operación. Los pagos de servicio llevan el ícono
+// del servicio pagado (gota para agua, rayo para luz...) para reconocerlos rápido.
 fun iconoDeTipo(tipo: TipoOperacion, servicio: String = ""): ImageVector = when (tipo) {
     TipoOperacion.DEPOSITO -> Icons.Filled.Savings
     TipoOperacion.RETIRO -> Icons.Filled.LocalAtm
@@ -109,8 +109,7 @@ fun iconoDeTipo(tipo: TipoOperacion, servicio: String = ""): ImageVector = when 
     TipoOperacion.PAGO_SERVICIO -> iconoDeServicio(servicio)
 }
 
-// Ícono de cada servicio básico (también lo usa el diálogo de pago).
-// Los servicios que agrega el laboratorio se buscan en el CATÁLOGO descargado del servidor.
+// Ícono de cada servicio: luz, agua e internet fijos; los demás, del catálogo del servidor.
 fun iconoDeServicio(servicio: String): ImageVector = when (servicio.uppercase()) {
     "LUZ" -> Icons.Filled.Bolt          // Rayo.
     "AGUA" -> Icons.Filled.WaterDrop    // Gota.
@@ -121,7 +120,7 @@ fun iconoDeServicio(servicio: String): ImageVector = when (servicio.uppercase())
 // Claves de ícono que puede elegir el laboratorio al crear un servicio (las mismas que acepta el servidor).
 val CLAVES_ICONO = listOf("RAYO", "GOTA", "WIFI", "TELEFONO", "GAS", "TV", "BASURA", "OTRO")
 
-// Clave de ícono -> ícono de Material.
+// Convierte una clave de texto ("GOTA", "RAYO"...) en el dibujo del ícono.
 fun iconoPorClave(clave: String?): ImageVector = when (clave) {
     "RAYO" -> Icons.Filled.Bolt
     "GOTA" -> Icons.Filled.WaterDrop
@@ -133,16 +132,17 @@ fun iconoPorClave(clave: String?): ImageVector = when (clave) {
     else -> Icons.Filled.Receipt        // OTRO o desconocido: factura genérica.
 }
 
-// CATÁLOGO EN MEMORIA: código del servicio -> clave de su ícono (ej. "GAS" -> "GAS").
-// Lo llena el ViewModel al descargar GET /servicios; así cualquier fila del historial puede dibujar
-// el ícono correcto sin conocer al ViewModel. @Volatile: lo escribe una corrutina y lo lee la UI.
+// CATÁLOGO DE SERVICIOS: guarda qué ícono tiene cada servicio descargado del servidor.
 object CatalogoServicios {
+    // @Volatile: asegura que todas las partes de la app vean siempre la versión más nueva.
     @Volatile
     private var iconos: Map<String, String> = emptyMap()
 
+    // Guarda la lista nueva de servicios descargada del servidor.
     fun actualizar(servicios: List<com.example.carriel_cuenca_billeteradistribuida.model.Servicio>) {
         iconos = servicios.associate { it.codigo to it.icono }
     }
 
+    // Devuelve la clave del ícono de un servicio (o null si no se conoce).
     fun iconoDe(codigo: String): String? = iconos[codigo]
 }

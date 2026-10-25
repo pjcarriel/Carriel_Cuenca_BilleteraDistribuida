@@ -1,4 +1,8 @@
-// Paquete de COMPONENTES: piezas pequeñas y reutilizables de la interfaz.
+// =====================================================================
+//   La píldora de arriba que dice si el teléfono está conectado al servidor:
+//   verde "En línea", ámbar "Conectando..." o rojo "Desconectado".
+// =====================================================================
+
 package com.example.carriel_cuenca_billeteradistribuida.ui.components
 
 import androidx.compose.foundation.background
@@ -23,19 +27,17 @@ import com.example.carriel_cuenca_billeteradistribuida.ui.theme.AmbarConectando
 import com.example.carriel_cuenca_billeteradistribuida.ui.theme.RojoDesconectado
 import com.example.carriel_cuenca_billeteradistribuida.ui.theme.VerdeEnLinea
 
-// INDICADOR DEL WEBSOCKET: verde "En línea", ámbar "Conectando..." o rojo "Desconectado".
-// Indica si el TÚNEL de tiempo real está abierto (no si se puede operar por REST).
+// Muestra el estado de la conexión en tiempo real (WebSocket) con el servidor.
+// Ojo: solo dice si el "canal en vivo" está abierto, no si se pueden hacer operaciones.
 @Composable
 fun EstadoConexionChip(estado: EstadoConexion) {
-    // "when" como EXPRESIÓN que devuelve un PAR (color, texto); "val (a, b) =" lo separa.
-    // Como EstadoConexion es un enum, Kotlin obliga a cubrir los tres casos.
+    // Según el estado, elegimos un color y un texto.
     val (color, texto) = when (estado) {
-        // "a to b" crea un Pair (par de valores): aquí (color, texto).
         EstadoConexion.EN_LINEA -> VerdeEnLinea to "En línea"
         EstadoConexion.CONECTANDO -> AmbarConectando to "Conectando..."
         EstadoConexion.DESCONECTADO -> RojoDesconectado to "Desconectado"
     }
-    // Una "píldora" blanca semitransparente que contiene el círculo y el texto.
+    // La píldora: fondo blanco transparente con el círculo y el texto adentro.
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier

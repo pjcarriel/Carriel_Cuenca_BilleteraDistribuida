@@ -1,36 +1,37 @@
-// Paquete "data.local": todo lo que se guarda DENTRO del teléfono (Room).
+// =====================================================================
+//   Es la tabla del teléfono donde se guarda el historial de movimientos.
+//   Cada fila dice a qué cuenta pertenece.
+// =====================================================================
+
 package com.example.carriel_cuenca_billeteradistribuida.data.local
 
-import androidx.room.Entity       // Anotación: "esta clase es una TABLA".
-import androidx.room.Index        // Índice: búsqueda rápida y, si es "unique", impide duplicados.
-import androidx.room.PrimaryKey   // Anotación: "este campo es la llave primaria".
+import androidx.room.Entity       // Marca "esta clase es una TABLA".
+import androidx.room.Index        // Índice: busca rápido y puede impedir repetidos.
+import androidx.room.PrimaryKey   // Marca "este campo es la llave de la tabla".
 import com.example.carriel_cuenca_billeteradistribuida.model.Movimiento
 import com.example.carriel_cuenca_billeteradistribuida.model.TipoOperacion
 
-// Tabla "movimientos". Desde la Fase 6.5 guarda el historial de VARIAS cuentas (una por usuario
-// que haya iniciado sesión en este teléfono), por eso cada fila sabe a qué "cuenta" pertenece.
-// Índice ÚNICO (cuenta, transaccionId): el mismo comprobante del servidor no se puede guardar dos veces
-// (llega por WebSocket y luego otra vez al descargar el historial -> la segunda se ignora).
+// Un movimiento guardado. No se puede repetir la misma cuenta + transaccionId (evita duplicados).
 @Entity(
     tableName = "movimientos",
     indices = [Index(value = ["cuenta", "transaccionId"], unique = true)]
 )
 data class MovimientoEntity(
-    // autoGenerate: con id = 0 Room asigna solo el siguiente número (1, 2, 3...) al insertar.
+    // Número de la fila; la base de datos lo pone sola (1, 2, 3...).
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
     val cuenta: String,                 // Cuenta dueña del movimiento (ej. "1001").
-    val transaccionId: Long?,           // Id en MySQL (null si no lo hay).
-    val tipo: TipoOperacion,            // Room guarda el enum como texto.
+    val transaccionId: Long?,           // Número que le dio el servidor (vacío si no tiene).
+    val tipo: TipoOperacion,            // Depósito, retiro, etc.
     val monto: Double,
     val fechaHora: Long,
     val detalle: String,
     val categoria: String?
 )
 
-// FUNCIONES DE EXTENSIÓN: agregan un método a una clase sin modificarla (se usan como entidad.aModelo()).
-// Separar "entidad" (tabla) y "modelo" (app) evita que la pantalla dependa de cómo se guarda en Room.
-// Fila de la tabla -> modelo de la app (la pantalla no necesita saber de qué cuenta es).
+// Fila de la tabla -> Movimiento de la app (para mostrarlo en el historial).
+// Mostrar en pantalla
+// Como ya se visualiza pordemos ver la cuenta y no es necesario
 fun MovimientoEntity.aModelo(): Movimiento = Movimiento(
     id = id,
     tipo = tipo,
@@ -41,7 +42,9 @@ fun MovimientoEntity.aModelo(): Movimiento = Movimiento(
     transaccionId = transaccionId
 )
 
-// Modelo de la app -> fila de la tabla, indicando de qué cuenta es.
+// Movimiento de la app -> fila de la tabla, indicando de qué cuenta es (para guardarlo).
+// Guardar en el room
+// El room necesita saber las cuentas para guardar de quien son cada una
 fun Movimiento.aEntidad(cuenta: String): MovimientoEntity = MovimientoEntity(
     id = id,
     cuenta = cuenta,

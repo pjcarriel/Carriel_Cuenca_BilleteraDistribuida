@@ -1,4 +1,8 @@
-// Paquete de la autenticación.
+// =====================================================================
+//   La pantalla de inicio de sesión: el usuario escribe su usuario y
+//   contraseña para entrar. También permite cambiar la dirección del servidor.
+// =====================================================================
+
 package com.example.carriel_cuenca_billeteradistribuida.ui.auth
 
 import androidx.compose.foundation.background
@@ -54,19 +58,16 @@ import androidx.compose.ui.unit.sp
 import com.example.carriel_cuenca_billeteradistribuida.ui.theme.AzulTarjeta
 import com.example.carriel_cuenca_billeteradistribuida.ui.theme.AzulTarjetaClaro
 
-// PANTALLA DE INICIO DE SESIÓN.
-// @Composable = función que DIBUJA interfaz. No habla con el servidor: entrega usuario y
-// contraseña por "onIngresar" y AppRaiz se los pasa al SesionViewModel.
+// PANTALLA DE INICIO DE SESIÓN: entrega usuario y contraseña al SesionViewModel.
 @Composable
 fun LoginScreen(
     procesando: Boolean,                         // true = esperando al servidor.
     mensaje: AvisoAcceso?,                       // Error o aviso (ej. "sesión cerrada por inactividad").
-    onIngresar: (usuario: String, password: String) -> Unit,   // Lambda que inicia sesión con los datos.
+    onIngresar: (usuario: String, password: String) -> Unit,   // Inicia sesión con los datos escritos.
     onIrARegistro: () -> Unit,                   // Cambia a la pantalla de registro.
     onEscribir: () -> Unit                       // Al escribir, se borra el mensaje anterior.
 ) {
-    // Estado de los campos. remember = guarda el valor entre redibujados;
-    // "by" permite leer/escribir "usuario" sin escribir ".value".
+    // Lo que el usuario va escribiendo (la pantalla lo recuerda).
     var usuario by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var verPassword by remember { mutableStateOf(false) }      // Ojo para mostrar/ocultar la contraseña.
@@ -74,9 +75,9 @@ fun LoginScreen(
     // El botón solo se habilita si hay datos y no se está esperando al servidor.
     val puedeIngresar = usuario.isNotBlank() && password.isNotBlank() && !procesando
 
-    // Encabezado azul común; lo que va entre { } es el formulario (lambda "contenido").
+    // Encabezado azul; debajo va el formulario.
     EncabezadoAcceso(titulo = "Billetera Distribuida", subtitulo = "Inicia sesión para continuar") {
-        // Campo de usuario: se guarda sin espacios y en minúsculas. ImeAction.Next = pasar al siguiente campo.
+        // Campo de usuario: se guarda sin espacios y en minúsculas.
         OutlinedTextField(
             value = usuario,
             onValueChange = { usuario = it.trim().lowercase(); onEscribir() },
@@ -86,7 +87,7 @@ fun LoginScreen(
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
             modifier = Modifier.fillMaxWidth()
         )
-        // Campo de contraseña. KeyboardType.Password = teclado sin sugerencias ni autocorrector.
+        // Campo de contraseña (el teclado no muestra sugerencias).
         OutlinedTextField(
             value = password,
             onValueChange = { password = it; onEscribir() },
@@ -99,14 +100,14 @@ fun LoginScreen(
                         contentDescription = if (verPassword) "Ocultar contraseña" else "Mostrar contraseña")
                 }
             },
-            // None = se ve el texto tal cual; PasswordVisualTransformation = se ven puntos.
+            // Se ve el texto o se ven puntos "••••", según el botón del ojo.
             visualTransformation = if (verPassword) VisualTransformation.None else PasswordVisualTransformation(),
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
             modifier = Modifier.fillMaxWidth()
         )
 
-        // Mensaje de error o aviso. "?.let" = solo si no es null.
+        // Mensaje de error o aviso (solo si hay alguno).
         mensaje?.let { MensajeAcceso(it.texto, it.esError) }
 
         // Botón "Ingresar": mientras se espera al servidor, muestra una ruedita de carga en vez del texto.
@@ -125,15 +126,15 @@ fun LoginScreen(
 
         // Configurar la dirección del servidor (necesario en un teléfono real).
         var mostrarConfig by remember { mutableStateOf(false) }
-        // "hostUi" es estado de Compose: al guardar, el texto de abajo se actualiza al instante.
+        // Dirección que se muestra; al guardar una nueva, el texto se actualiza al instante.
         var hostUi by remember { mutableStateOf(ConfigServidor.host()) }
-        // Botón pequeño que muestra el servidor actual; al tocarlo abre el diálogo de configuración.
+        // Botón pequeño que muestra el servidor actual; al tocarlo abre la ventana de configuración.
         TextButton(onClick = { mostrarConfig = true }) {
             Icon(Icons.Filled.Settings, contentDescription = null, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(4.dp))
             Text("Servidor: $hostUi", fontSize = 12.sp)
         }
-        // El diálogo solo existe mientras mostrarConfig sea true (en Compose, "mostrar" = "dibujar").
+        // La ventana solo aparece mientras mostrarConfig sea true.
         if (mostrarConfig) ConfigServidorDialog(
             onGuardado = { hostUi = it },
             onCerrar = { mostrarConfig = false }
@@ -141,17 +142,17 @@ fun LoginScreen(
     }
 }
 
-// Diálogo para cambiar la dirección del servidor (emulador: 10.0.2.2; misma wifi: IP de la PC;
-// cualquier red: URL https del túnel de Cloudflare).
+// Ventana para cambiar la dirección del servidor:
+//   emulador = 10.0.2.2; misma wifi = IP de la PC; cualquier red = dirección https del túnel de Cloudflare.
 @Composable
 private fun ConfigServidorDialog(onGuardado: (String) -> Unit, onCerrar: () -> Unit) {
-    // LocalContext.current = el Context de Android; ConfigServidor lo necesita para guardar la dirección.
+    // Acceso a Android, necesario para guardar la dirección en el teléfono.
     val contexto = LocalContext.current
     // Texto editable del campo; empieza con la dirección guardada actualmente.
     var host by remember { mutableStateOf(ConfigServidor.host()) }
     // Error si la dirección escrita no es válida (null = sin error).
     var error by remember { mutableStateOf<String?>(null) }
-    // AlertDialog = ventana emergente. onDismissRequest = tocar fuera o "atrás" la cierra.
+    // Ventana emergente; tocar fuera o "atrás" la cierra.
     AlertDialog(
         onDismissRequest = onCerrar,
         icon = { Icon(Icons.Filled.Settings, contentDescription = null) },
@@ -164,7 +165,7 @@ private fun ConfigServidorDialog(onGuardado: (String) -> Unit, onCerrar: () -> U
                     label = { Text("IP o dirección del servidor") },
                     singleLine = true,
                     isError = error != null,                       // Borde rojo si hay error.
-                    // Texto de ayuda debajo del campo: solo si hay error (si error es null, queda null).
+                    // Mensaje de error debajo del campo (solo si hay error).
                     supportingText = error?.let { { Text(it) } },
                     // Teclado de direcciones web (muestra "/", ":" y ".com").
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
@@ -176,8 +177,8 @@ private fun ConfigServidorDialog(onGuardado: (String) -> Unit, onCerrar: () -> U
             }
         },
         confirmButton = {
-            // Guardar: guardarHost valida y guarda la dirección (devuelve true si era válida).
-            // Si es válida, avisa la nueva dirección a LoginScreen y cierra; si no, muestra el error.
+            // Guardar: revisa la dirección y, si es válida, la guarda, la muestra en el Login y cierra.
+            // Si no es válida, muestra el error.
             Button(onClick = {
                 if (ConfigServidor.guardarHost(contexto, host)) {
                     onGuardado(ConfigServidor.host())
@@ -191,11 +192,11 @@ private fun ConfigServidorDialog(onGuardado: (String) -> Unit, onCerrar: () -> U
     )
 }
 
-// Estructura común de Login y Registro: encabezado azul con ícono, y el formulario debajo.
-// "contenido: @Composable () -> Unit" = una lambda que DIBUJA (los campos de cada pantalla).
+// Diseño común de Login y Registro: encabezado azul con ícono y, debajo, el formulario.
+// "contenido" son los campos que manda cada pantalla.
 @Composable
 fun EncabezadoAcceso(titulo: String, subtitulo: String, contenido: @Composable () -> Unit) {
-    // Columna de toda la pantalla: se puede desplazar y deja espacio al teclado (imePadding).
+    // Toda la pantalla: se puede desplazar y deja espacio para el teclado.
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -229,15 +230,14 @@ fun EncabezadoAcceso(titulo: String, subtitulo: String, contenido: @Composable (
 // Caja de mensaje: ROJA si es un error, AZUL si es solo información (ej. "Cerraste sesión").
 @Composable
 fun MensajeAcceso(texto: String, esError: Boolean) {
-    // Colores del tema Material: "...Container" = fondo; "on..." = color del texto encima de ese fondo.
+    // Color de fondo y color del texto según si es error o información.
     val fondo = if (esError) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.secondaryContainer
     val color = if (esError) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSecondaryContainer
     Text(
         text = texto,
         color = color,
         fontSize = 14.sp,
-        // El ORDEN de los modificadores importa: primero recortar las esquinas, luego pintar el fondo
-        // (así el fondo queda redondeado) y al final el relleno interno.
+        // Caja con esquinas redondeadas, color de fondo y margen interno.
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))

@@ -1,4 +1,8 @@
-// Paquete "data".
+// =====================================================================
+//   Se encarga de ENTRAR y SALIR de la app: iniciar sesión, registrarse,
+//   mantener viva la sesión y cerrarla.
+// =====================================================================
+
 package com.example.carriel_cuenca_billeteradistribuida.data
 
 import android.content.Context
@@ -15,26 +19,24 @@ import com.example.carriel_cuenca_billeteradistribuida.util.logHilo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-// REPOSITORIO DE SESIÓN: login, registro, logout y la sesión guardada en Room.
-// Igual que el otro repositorio: TODO acceso a red o disco ocurre en Dispatchers.IO.
+// Repositorio de la sesión. Todo lo de internet o disco va en segundo plano (Dispatchers.IO).
 class SesionRepository(
     private val sesionDao: SesionDao,
-    private val contexto: Context                   // Contexto de la APP (para leer la dirección del servidor).
+    private val contexto: Context                   // Contexto de la app (para leer la dirección del servidor).
 ) {
-    // Se lee en CADA uso (no se guarda fijo): así, si cambia la dirección del servidor,
-    // la próxima llamada usa la dirección nueva. (Antes se capturaba una sola vez y quedaba en 10.0.2.2.)
+    // Conexión con el servidor (se pide cada vez, por si cambió la dirección).
     private val api: BilleteraApi get() = RetrofitClient.api
 
-    // Sesión guardada en el teléfono (al abrir la app). Si existe, deja listo el token en memoria.
-    // Es lo PRIMERO que hace la app: aquí también se lee la dirección del servidor (disco -> IO).
+    // Al abrir la app: carga la dirección del servidor y busca una sesión guardada.
+    // Si la hay, el usuario entra directo sin escribir la contraseña.
     suspend fun sesionGuardada(): SesionEntity? = withContext(Dispatchers.IO) {
         ConfigServidor.cargar(contexto)
         logHilo("SesionRepository: servidor configurado en ${ConfigServidor.host()}")
-        // "?.also { }" = solo si hay sesión (no null) copia su token a memoria; devuelve la misma sesión.
+        // Si hay sesión, deja listo su token y la devuelve.
         sesionDao.obtener()?.also { ProveedorToken.token = it.token }
     }
 
-    // Inicia sesión en el servidor y guarda la sesión en Room.
+    // Inicio de sesión: revisa usuario y contraseña con el servidor y guarda la sesión.
     suspend fun login(usuario: String, password: String): Resultado<SesionEntity> = withContext(Dispatchers.IO) {
         llamarServidor {
             logHilo("SesionRepository: POST /auth/login ($usuario)")
@@ -42,7 +44,7 @@ class SesionRepository(
         }
     }
 
-    // Crea un usuario nuevo (con su cuenta y $100) y deja la sesión abierta.
+    // Registro: crea el usuario con su cuenta y $100, y lo deja dentro de la app.
     suspend fun registrar(nombre: String, usuario: String, password: String): Resultado<SesionEntity> =
         withContext(Dispatchers.IO) {
             llamarServidor {
@@ -51,8 +53,7 @@ class SesionRepository(
             }
         }
 
-    // "LATIDO": petición liviana que avisa al servidor que el usuario sigue activo,
-    // para que su sesión no expire mientras usa la app sin hacer operaciones.
+    // "Latido": le dice al servidor "sigo aquí" para que la sesión no expire.
     suspend fun latido(): Resultado<Unit> = withContext(Dispatchers.IO) {
         llamarServidor {
             logHilo("SesionRepository: latido de actividad (GET /mi-cuenta)")
@@ -61,16 +62,15 @@ class SesionRepository(
         }
     }
 
-    // Guarda en Room el momento de la última actividad (por si la app se cierra y se vuelve a abrir).
+    // Anota la hora de la última actividad del usuario.
     suspend fun guardarActividad(momento: Long) = withContext(Dispatchers.IO) {
         sesionDao.actualizarActividad(momento)
     }
 
-    // Cierra la sesión: avisa al servidor (si se puede) y borra la sesión local.
-    // "avisarServidor = false" cuando el servidor ya la invalidó (401) y no tiene sentido llamarlo.
+    // Cerrar sesión: avisa al servidor (si se puede) y borra la sesión del teléfono.
     suspend fun cerrarSesion(avisarServidor: Boolean) = withContext(Dispatchers.IO) {
         if (avisarServidor) {
-            // runCatching: si no hay conexión, igual cerramos la sesión local.
+            // Si no hay internet, igual se cierra la sesión en el teléfono.
             runCatching { api.logout() }.onFailure { logHilo("SesionRepository: no se pudo avisar el logout al servidor") }
         }
         sesionDao.borrar()
@@ -78,8 +78,7 @@ class SesionRepository(
         logHilo("SesionRepository: sesión local cerrada")
     }
 
-    // Convierte la respuesta del servidor en la sesión local, la guarda y activa el token.
-    // Desde que ProveedorToken.token tiene valor, AuthInterceptor lo agrega a TODAS las peticiones.
+    // Guarda en el teléfono la sesión que respondió el servidor y activa su token.
     private suspend fun guardarSesion(dto: SesionDto): SesionEntity {
         val sesion = SesionEntity(
             token = dto.token,

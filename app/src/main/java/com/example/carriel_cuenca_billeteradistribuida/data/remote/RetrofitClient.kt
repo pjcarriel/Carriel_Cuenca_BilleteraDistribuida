@@ -1,18 +1,21 @@
-// Paquete de comunicación con el servidor.
+// =====================================================================
+//   Prepara UNA sola vez la conexión con el servidor y la comparte con
+//   toda la app, para que los pedidos de BilleteraApi viajen por internet.
+// =====================================================================
+
 package com.example.carriel_cuenca_billeteradistribuida.data.remote
 
-import android.util.Log                               // Escribir en el Logcat.
-import okhttp3.OkHttpClient                           // Cliente HTTP (también servirá para el WebSocket).
-import okhttp3.logging.HttpLoggingInterceptor         // Registra cada petición/respuesta HTTP.
-import retrofit2.Retrofit                             // Constructor de la API REST.
-import retrofit2.converter.gson.GsonConverterFactory  // Conversor JSON <-> objetos con Gson.
+import android.util.Log                               // Para escribir mensajes en el Logcat.
+import okhttp3.OkHttpClient                           // El que envía los pedidos por internet.
+import okhttp3.logging.HttpLoggingInterceptor         // Muestra cada pedido y respuesta en el Logcat.
+import retrofit2.Retrofit                             // Arma la API para hablar con el servidor.
+import retrofit2.converter.gson.GsonConverterFactory  // Traduce entre JSON y objetos Kotlin.
 import java.util.concurrent.TimeUnit                  // Unidades de tiempo (segundos).
 
-// Crea UNA sola vez el cliente HTTP y la API (object = instancia única para toda la app).
+// Conexión y API únicas para toda la app.
 object RetrofitClient {
 
-    // Interceptor de LOG: muestra en el Logcat (tag "HTTP") cada petición y respuesta con el NOMBRE DEL HILO.
-    // redactHeader: el token NUNCA se escribe en el Logcat (aparece como "██").
+    // Anota en el Logcat cada pedido y respuesta, ocultando el token.
     private val interceptorLog = HttpLoggingInterceptor { mensaje ->
         Log.d("HTTP", "[${Thread.currentThread().name}] $mensaje")
     }.apply {
@@ -20,26 +23,23 @@ object RetrofitClient {
         redactHeader("Authorization")
     }
 
-    // Cliente OkHttp compartido (lo reutiliza el WebSocket).
-    // Orden de los interceptores: primero se añade el token, luego se registra la petición.
+    // Conexión compartida (también la usa el WebSocket).
     val clienteHttp: OkHttpClient = OkHttpClient.Builder()
-        .addInterceptor(AuthInterceptor())          // 1. Añade "Authorization: Bearer <token>".
-        .addInterceptor(interceptorLog)             // 2. Registra la petición (con el token oculto).
-        .connectTimeout(5, TimeUnit.SECONDS)        // Si en 5 s no conecta (servidor apagado) -> error.
+        .addInterceptor(AuthInterceptor())          // 1. Pega el token al pedido.
+        .addInterceptor(interceptorLog)             // 2. Lo anota en el Logcat.
+        .connectTimeout(5, TimeUnit.SECONDS)        // Si en 5 s no conecta -> error.
         .readTimeout(10, TimeUnit.SECONDS)          // Si en 10 s no responde -> error.
         .build()
 
-    // La API de Retrofit. Como la dirección del servidor puede cambiar (emulador vs teléfono),
-    // guardamos en caché la API junto con la URL con la que se creó. Si la URL cambió, se reconstruye.
+    // Guarda la API ya armada junto con la dirección del servidor que usó.
     @Volatile
     private var cache: Pair<String, BilleteraApi>? = null
 
-    // "get()" = propiedad CALCULADA: este código corre cada vez que alguien lee RetrofitClient.api.
-    // Retrofit.create(...) genera en tiempo de ejecución la implementación de la interfaz BilleteraApi.
+    // Entrega la API lista para usar; si cambió la dirección del servidor, arma una nueva.
     val api: BilleteraApi
         get() {
             val base = ConfigServidor.urlBase()
-            cache?.let { if (it.first == base) return it.second }    // Misma URL: reutilizamos.
+            cache?.let { if (it.first == base) return it.second }    // Misma dirección: reutilizamos.
             val nueva = Retrofit.Builder()
                 .baseUrl(base)
                 .client(clienteHttp)

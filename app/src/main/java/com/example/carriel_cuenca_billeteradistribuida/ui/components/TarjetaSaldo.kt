@@ -1,4 +1,8 @@
-// Paquete de componentes reutilizables.
+// =====================================================================
+//   La tarjeta azul de arriba: muestra el saldo en números grandes,
+//   el número de cuenta y si hay conexión con el servidor.
+// =====================================================================
+
 package com.example.carriel_cuenca_billeteradistribuida.ui.components
 
 import androidx.compose.animation.core.animateFloatAsState      // Anima un número de un valor a otro.
@@ -29,21 +33,19 @@ import com.example.carriel_cuenca_billeteradistribuida.ui.formatearMonto
 import com.example.carriel_cuenca_billeteradistribuida.ui.theme.AzulTarjeta
 import com.example.carriel_cuenca_billeteradistribuida.ui.theme.AzulTarjetaClaro
 
-// TARJETA DE SALDO (parte superior): saldo en números grandes, cuenta e indicador del WebSocket.
+// Tarjeta del saldo: saldo grande, número de cuenta e indicador de conexión.
 @Composable
 fun TarjetaSaldo(
     saldo: Double?,                     // null = todavía no se conoce el saldo.
-    cuenta: String,                     // Número de cuenta de la app.
-    estadoConexion: EstadoConexion                              // Estado del WebSocket (para el indicador).
+    cuenta: String,                     // Número de cuenta del usuario.
+    estadoConexion: EstadoConexion                              // Estado de la conexión (para el indicador).
 ) {
-    // SALDO ANIMADO: cuando el saldo cambia (ej. llega una transferencia), el número
-    // "cuenta" desde el valor anterior hasta el nuevo durante 800 ms.
-    // animateFloatAsState devuelve un estado que Compose redibuja en cada fotograma de la animación.
-    // "by" = DELEGADO: leemos saldoAnimado como un Float normal (por eso se importa getValue).
+    // SALDO ANIMADO: cuando el saldo cambia (por ejemplo, llega una transferencia),
+    // el número sube o baja poco a poco hasta el valor nuevo, en 800 ms.
     val saldoAnimado by animateFloatAsState(
-        targetValue = (saldo ?: 0.0).toFloat(),                 // Valor final. "?:" (Elvis): si saldo es null usa 0.0.
+        targetValue = (saldo ?: 0.0).toFloat(),                 // Valor final (si no hay saldo, usa 0).
         animationSpec = tween(durationMillis = 800),            // La animación dura 800 ms.
-        label = "saldo"                                         // Nombre de la animación (para herramientas de depuración).
+        label = "saldo"                                         // Nombre de la animación.
     )
 
     Card(
@@ -56,7 +58,7 @@ fun TarjetaSaldo(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(Brush.linearGradient(listOf(AzulTarjeta, AzulTarjetaClaro)))  // De azul oscuro a azul claro.
-                .padding(24.dp)                                 // Margen interno (va DESPUÉS del fondo, así el fondo cubre todo).
+                .padding(24.dp)                                 // Margen interno.
         ) {
             // Fila superior: título a la izquierda, indicador a la derecha.
             Row(
@@ -64,13 +66,12 @@ fun TarjetaSaldo(
                 horizontalArrangement = Arrangement.SpaceBetween,  // Separa los extremos: uno a cada lado.
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("Saldo actual", color = Color.White.copy(alpha = 0.8f))  // alpha 0.8 = blanco un poco transparente.
-                EstadoConexionChip(estadoConexion)              // Indicador de EstadoConexionChip.kt.
+                Text("Saldo actual", color = Color.White.copy(alpha = 0.8f))  // Blanco un poco transparente.
+                EstadoConexionChip(estadoConexion)              // La píldora de conexión (EstadoConexionChip.kt).
             }
             Spacer(Modifier.height(12.dp))
-            // Saldo en NÚMEROS GRANDES. Si es null: "$ --".
+            // Saldo en números grandes, con formato de dinero. Si aún no se conoce: "$ --".
             Text(
-                // saldoAnimado es Float: se pasa a Double para darle formato de dinero.
                 text = if (saldo == null) "$ --" else formatearMonto(saldoAnimado.toDouble()),
                 color = Color.White,
                 fontSize = 40.sp,                               // Números grandes.

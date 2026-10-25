@@ -1,4 +1,8 @@
-// Paquete de componentes reutilizables.
+// =====================================================================
+//   La ventana con el COMPROBANTE de una operación, como el de un banco.
+//   Se puede descargar a la Galería o compartir como imagen.
+// =====================================================================
+
 package com.example.carriel_cuenca_billeteradistribuida.ui.components
 
 import android.Manifest
@@ -76,13 +80,12 @@ import kotlinx.coroutines.launch
 private val TextoOscuro = Color(0xFF1F2937)
 private val TextoGris = Color(0xFF6B7280)
 
-// N.º de comprobante: el id de la transacción en el SERVIDOR con 8 dígitos (ej. 00000123).
-// Si no tiene id del servidor (caso raro), se usa el id local de Room.
+// Número del comprobante (ej. 00000123). Si el servidor no le dio número, usa el del teléfono con "L".
 fun numeroComprobante(movimiento: Movimiento): String =
     movimiento.transaccionId?.let { "%08d".format(it) } ?: "L-${movimiento.id}"
 
-// COMPROBANTE de una operación (como el de las apps de los bancos), con botón para COMPARTIRLO como imagen.
-// Sale de Room, así que se puede ver y compartir aunque no haya internet.
+// Ventana del comprobante de una operación, con botones para descargarlo y compartirlo.
+// Los datos salen de la base de datos del teléfono, así que funciona aunque no haya internet.
 @Composable
 fun ComprobanteDialog(
     movimiento: Movimiento,         // La operación del comprobante.
@@ -91,16 +94,16 @@ fun ComprobanteDialog(
     onCerrar: () -> Unit
 ) {
     val contexto = LocalContext.current
-    val alcance = rememberCoroutineScope()
+    val alcance = rememberCoroutineScope()                      // Permite hacer tareas en segundo plano.
     var compartiendo by remember { mutableStateOf(false) }      // true mientras se genera la imagen.
     var descargando by remember { mutableStateOf(false) }       // true mientras se guarda en la Galería.
 
-    // CAPA GRÁFICA: todo lo que se dibuje dentro del comprobante se "graba" aquí,
-    // y luego se convierte en una imagen (bitmap) para compartirla.
+    // "Foto" del comprobante: todo lo que se dibuja en el comprobante se copia aquí,
+    // y luego se convierte en una imagen para descargarla o compartirla.
     val capa = rememberGraphicsLayer()
 
-    // DESCARGAR: convierte la capa en imagen y la guarda en la Galería (disco -> Dispatchers.IO dentro).
-    // Un Toast (mensajito flotante) confirma dónde quedó o avisa si falló.
+    // DESCARGAR: convierte el comprobante en imagen y la guarda en la Galería.
+    // Al final sale un mensajito flotante (Toast) diciendo si se guardó o si falló.
     fun descargar() {
         descargando = true
         alcance.launch {
@@ -115,16 +118,17 @@ fun ComprobanteDialog(
         }
     }
 
-    // Solo Android 8 y 9: pide el permiso de almacenamiento; si lo conceden, descarga.
+    // Solo en Android 8 y 9: pide permiso para guardar archivos; si lo dan, descarga.
     val pedirPermiso = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { concedido ->
         if (concedido) descargar()
         else Toast.makeText(contexto, "Sin el permiso de almacenamiento no se puede descargar", Toast.LENGTH_LONG).show()
     }
 
+    // Verde si el dinero entra, rojo si sale.
     val esIngreso = movimiento.tipo.esIngreso
     val colorMonto = if (esIngreso) VerdeIngreso else RojoEgreso
 
-    // usePlatformDefaultWidth = false: el diálogo puede ser más ancho que el estándar.
+    // La ventana puede ser más ancha que una ventana normal.
     Dialog(onDismissRequest = onCerrar, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -136,8 +140,8 @@ fun ComprobanteDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    // drawWithContent: dibuja el contenido DENTRO de la capa y luego muestra la capa.
-                    // Así lo que se ve en pantalla y lo que se comparte son exactamente lo mismo.
+                    // Copia el comprobante en la "foto" y la muestra en pantalla.
+                    // Así lo que se ve y lo que se comparte son exactamente lo mismo.
                     .drawWithContent {
                         capa.record { this@drawWithContent.drawContent() }
                         drawLayer(capa)
@@ -153,7 +157,7 @@ fun ComprobanteDialog(
                         .background(Brush.linearGradient(listOf(AzulTarjeta, AzulTarjetaClaro)))
                         .padding(16.dp)
                 ) {
-                    // El primer plano del ícono de la app (billetera con tarjetas) sobre un círculo azul.
+                    // Logo de la app (billetera con tarjetas) sobre un círculo azul.
                     Box(
                         modifier = Modifier
                             .size(44.dp)
@@ -199,7 +203,7 @@ fun ComprobanteDialog(
                     FilaDato("Cuenta", "N.º $cuenta")
                     FilaDato("Titular", titular)
                     FilaDato("Detalle", movimiento.detalle)
-                    // NULL SAFETY: la categoría solo existe en los pagos de servicio ("Servicio Básico").
+                    // La categoría solo aparece en los pagos de servicio ("Servicio Básico").
                     movimiento.categoria?.let { FilaDato("Categoría", it) }
 
                     Spacer(Modifier.height(8.dp))
@@ -235,10 +239,11 @@ fun ComprobanteDialog(
                         Text("Descargar")
                     }
                 }
+                // COMPARTIR: convierte el comprobante en imagen y abre el menú para compartir.
                 Button(
                     onClick = {
                         compartiendo = true
-                        // Corrutina: convertir la capa en imagen tarda un instante y guardar el PNG es disco (IO).
+                        // Se hace en segundo plano porque crear la imagen tarda un instante.
                         alcance.launch {
                             val imagen = capa.toImageBitmap().asAndroidBitmap()
                             compartirImagen(contexto, imagen, "comprobante_${numeroComprobante(movimiento)}")

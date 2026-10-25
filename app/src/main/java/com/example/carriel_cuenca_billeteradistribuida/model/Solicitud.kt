@@ -1,31 +1,37 @@
-// Paquete de los modelos de datos.
+// =====================================================================
+//   Una "Solicitud" es el PEDIDO que hace el usuario cuando aprieta el
+//   botón "Confirmar" en una ventana de operación.
+// =====================================================================
+
 package com.example.carriel_cuenca_billeteradistribuida.model
 
-// Lo que el usuario PIDE hacer al confirmar un diálogo.
-// "sealed interface" = familia CERRADA: solo existen estas 4 solicitudes,
-// y cada una lleva SOLO los datos que necesita (un depósito no tiene cuenta destino).
-// Así es imposible armar, por ejemplo, una transferencia sin destino.
+// Solicitud = el pedido del usuario. Solo hay 4 tipos de pedido posibles
+// (los de abajo). Todos tienen dos cosas en común:
 sealed interface Solicitud {
-    val monto: Double            // Todas las solicitudes tienen monto.
-    val tipo: TipoOperacion      // Y cada una sabe a qué tipo de movimiento corresponde.
+    val monto: Double            // 1. Cuánto dinero.
+    val tipo: TipoOperacion      // 2. Con qué etiqueta se guardará en el historial.
 
-    // "override" = cada clase da su propio valor a las propiedades que exige la interfaz.
-    // Depósito: solo el monto.
+    // Pedido de DEPÓSITO: solo hace falta saber cuánto.
+    // Al guardarse en el historial aparecerá como "Depósito".
     data class Deposito(override val monto: Double) : Solicitud {
         override val tipo = TipoOperacion.DEPOSITO
     }
 
-    // Retiro: solo el monto.
+    // Pedido de RETIRO: solo hace falta saber cuánto.
+    // Al guardarse en el historial aparecerá como "Retiro".
     data class Retiro(override val monto: Double) : Solicitud {
         override val tipo = TipoOperacion.RETIRO
     }
 
-    // Transferencia: monto y cuenta que recibe.
+    // Pedido de TRANSFERENCIA: hace falta saber cuánto y a qué cuenta va.
+    // Al guardarse en el historial aparecerá como "Transferencia enviada".
     data class Transferencia(val cuentaDestino: String, override val monto: Double) : Solicitud {
         override val tipo = TipoOperacion.TRANSFERENCIA_ENVIADA
     }
 
-    // Pago de servicio: tipo de servicio (LUZ, AGUA, INTERNET), código de contrato y monto.
+    // Pedido de PAGO DE SERVICIO: hace falta saber qué servicio (LUZ, AGUA...),
+    // el número de contrato y cuánto se paga.
+    // Al guardarse en el historial aparecerá como "Pago de servicio".
     data class PagoServicio(val servicio: String, val contrato: String, override val monto: Double) : Solicitud {
         override val tipo = TipoOperacion.PAGO_SERVICIO
     }

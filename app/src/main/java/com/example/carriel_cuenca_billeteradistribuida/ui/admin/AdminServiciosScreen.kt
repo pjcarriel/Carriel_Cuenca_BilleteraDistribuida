@@ -1,4 +1,8 @@
-// Paquete del panel de ADMINISTRACIÓN DE SERVICIOS (solo usuario laboratorio).
+// =====================================================================
+//   La pantalla "Servicios y facturas": aquí la empresa emite facturas,
+//   ve quién ya pagó y agrega servicios nuevos (ej. gas).
+// =====================================================================
+
 package com.example.carriel_cuenca_billeteradistribuida.ui.admin
 
 import androidx.compose.foundation.background
@@ -90,41 +94,40 @@ import java.time.LocalDate
 import java.time.format.TextStyle
 import java.util.Locale
 
-// PANEL "SERVICIOS Y FACTURAS": el laboratorio actúa como la EMPRESA de servicios básicos.
-// Dos pestañas:
-//  - FACTURAS: la empresa EMITE cada mes la factura de una persona (por su cédula). Esa persona luego
-//    la ve en "Pagar servicios → Por cédula" y la paga. Aquí se ve quién debe y quién ya pagó,
-//    y la lista se ACTUALIZA SOLA (WebSocket) cuando alguien paga desde su celular.
-//  - SERVICIOS: el catálogo (luz, agua, internet...). Se pueden AGREGAR servicios nuevos (ej. gas).
+// Pantalla "Servicios y facturas" con dos pestañas:
+// FACTURAS (emitir y ver pagos en vivo) y SERVICIOS (agregar servicios nuevos).
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AdminServiciosScreen(
-    viewModel: BilleteraViewModel,      // El mismo ViewModel del inicio (misma sesión y WebSocket).
+    viewModel: BilleteraViewModel,      // El mismo "cerebro" de la pantalla de inicio (misma sesión y conexión).
     onVolver: () -> Unit,
-    onActividad: () -> Unit             // Usar el panel cuenta como actividad (no se cierra la sesión).
+    onActividad: () -> Unit             // Avisa que el usuario está usando la app (para que no se cierre la sesión).
 ) {
+    // Datos que vienen del ViewModel; la pantalla se actualiza sola cuando cambian.
     val admin by viewModel.admin.collectAsStateWithLifecycle()
     val servicios by viewModel.servicios.collectAsStateWithLifecycle()
-    val snackbar = remember { SnackbarHostState() }
-    val alcance = rememberCoroutineScope()
+    val snackbar = remember { SnackbarHostState() }             // Mensajitos que aparecen abajo.
+    val alcance = rememberCoroutineScope()                      // Para tareas en segundo plano.
     var pestana by remember { mutableIntStateOf(0) }            // 0 = Facturas, 1 = Servicios.
     var mostrarNuevaFactura by remember { mutableStateOf(false) }
     var mostrarNuevoServicio by remember { mutableStateOf(false) }
-    // Al recargar la lista volvemos ARRIBA (ahí están las pendientes).
+    // Cada vez que cambia la lista de facturas, se vuelve arriba (ahí están las pendientes).
     val estadoLista = rememberLazyListState()
     LaunchedEffect(admin.facturas) { estadoLista.scrollToItem(0) }
 
-    // Al abrir: cargar las facturas. Al salir (onDispose): avisar al ViewModel para que no recargue más.
+    // Al abrir la pantalla se cargan las facturas; al salir, se avisa al ViewModel para que deje de recargarlas.
     LaunchedEffect(Unit) { viewModel.cargarFacturasAdmin() }
     DisposableEffect(Unit) { onDispose { viewModel.cerrarAdmin() } }
-    // Avisos en tiempo real (alguien pagó o se emitió una factura). La lista ya se recarga en el ViewModel.
+    // Avisos en tiempo real (alguien pagó o se emitió una factura): se muestran como mensajito abajo.
     LaunchedEffect(Unit) {
         viewModel.avisosFacturas.collect { detalle -> onActividad(); snackbar.showSnackbar("🔔 $detalle") }
     }
 
+    // Facturas separadas en pendientes y pagadas (para el resumen).
     val pendientes = admin.facturas.filter { !it.pagado }
     val pagadas = admin.facturas.filter { it.pagado }
 
+    // Estructura de la pantalla: barra superior, botón flotante y contenido.
     Scaffold(
         topBar = {
             TopAppBar(
@@ -166,7 +169,7 @@ fun AdminServiciosScreen(
                         Resumen("Por cobrar", pendientes.sumOf { it.monto }, "${pendientes.size} pendientes", RojoEgreso, Modifier.weight(1f))
                         Resumen("Recaudado", pagadas.sumOf { it.monto }, "${pagadas.size} pagadas", VerdeIngreso, Modifier.weight(1f))
                     }
-                    // Filtros (horizontalScroll: si no caben, se deslizan a los lados).
+                    // Filtros por estado y por servicio (si no caben, se deslizan de lado).
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
                         listOf(null to "Todas", "PENDIENTES" to "Pendientes", "PAGADAS" to "Pagadas").forEach { (valor, texto) ->
                             FilterChip(selected = admin.estado == valor, onClick = { onActividad(); viewModel.cargarFacturasAdmin(estado = valor) },
@@ -187,7 +190,7 @@ fun AdminServiciosScreen(
                     }
                     admin.error?.let { Text(it, color = RojoEgreso, fontSize = 13.sp) }
                 }
-                // contentPadding inferior: el último elemento no queda tapado por el botón flotante.
+                // Lista de facturas. Tiene espacio extra abajo para que el botón flotante no tape la última.
                 LazyColumn(
                     state = estadoLista,
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 96.dp),
@@ -222,19 +225,21 @@ fun AdminServiciosScreen(
         }
     }
 
+    // Ventana "Emitir factura" (solo aparece si se tocó el botón).
     if (mostrarNuevaFactura) {
-        // Titulares conocidos por cédula: al escribir una cédula que ya tiene facturas, el nombre se completa solo.
+        // Nombres ya conocidos por cédula: al escribir una cédula que ya tiene facturas, el nombre se completa solo.
         val titulares = admin.facturas.mapNotNull { f -> f.cedula?.let { it to f.titular } }.toMap()
         EmitirFacturaDialog(
             servicios = servicios,
             titularesConocidos = titulares,
             onCrear = viewModel::crearFactura,
             onActividad = onActividad,
-            // Al emitirla se cierra el diálogo; el aviso "Nueva factura ..." llega solo por WebSocket.
+            // Al emitirla se cierra la ventana; el aviso "Nueva factura ..." llega solo desde el servidor.
             onCreada = { mostrarNuevaFactura = false },
             onCancelar = { mostrarNuevaFactura = false }
         )
     }
+    // Ventana "Nuevo servicio" (solo aparece si se tocó el botón).
     if (mostrarNuevoServicio) {
         NuevoServicioDialog(
             onCrear = viewModel::crearServicio,
@@ -346,8 +351,8 @@ private fun periodoActual(): String {
     return mes.replaceFirstChar { it.uppercase() } + " " + hoy.year
 }
 
-// DIÁLOGO "EMITIR FACTURA": la empresa le cobra a una persona (por su cédula) el servicio de un mes.
-// Valida aquí la cédula (algoritmo) y el monto; el servidor genera el código de contrato.
+// VENTANA "EMITIR FACTURA": la empresa le cobra a una persona (por su cédula) el servicio de un mes.
+// Aquí se revisa que la cédula sea real y que el monto sea correcto; el servidor crea el código de contrato.
 @Composable
 private fun EmitirFacturaDialog(
     servicios: List<Servicio>,
@@ -366,12 +371,13 @@ private fun EmitirFacturaDialog(
     var guardando by remember { mutableStateOf(false) }
     val alcance = rememberCoroutineScope()
 
-    // Escribir en el diálogo cuenta como actividad (los diálogos no los ve el detector de toques).
+    // Escribir en la ventana cuenta como actividad (para que no se cierre la sesión).
     LaunchedEffect(cedula, titular, servicio, periodo, monto) { onActividad() }
 
+    // Revisa los datos y, si todo está bien, pide al servidor crear la factura.
     fun crear() {
         val valor = monto.replace(',', '.').toDoubleOrNull()
-        // Validaciones locales (el servidor valida lo mismo otra vez).
+        // Revisión en el teléfono (el servidor vuelve a revisar lo mismo).
         error = when {
             !cedulaValida(cedula) -> "Cédula no válida (10 dígitos con dígito verificador correcto)"
             titular.trim().length < 3 -> "Escribe el nombre del titular"
@@ -466,7 +472,7 @@ private fun codigoSugerido(nombre: String): String {
     return sinTildes.trim().substringBefore(" ").uppercase().filter { it in 'A'..'Z' }.take(10)
 }
 
-// DIÁLOGO "NUEVO SERVICIO": nombre, código y el ícono con que se mostrará en la app.
+// VENTANA "NUEVO SERVICIO": nombre, código y el ícono con que se mostrará en la app.
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun NuevoServicioDialog(
@@ -483,8 +489,10 @@ private fun NuevoServicioDialog(
     var guardando by remember { mutableStateOf(false) }
     val alcance = rememberCoroutineScope()
 
+    // Escribir en la ventana cuenta como actividad.
     LaunchedEffect(nombre, codigo, icono) { onActividad() }
 
+    // Revisa el nombre y el código y, si están bien, pide al servidor crear el servicio.
     fun crear() {
         error = when {
             nombre.trim().length < 3 -> "Escribe el nombre del servicio"

@@ -1,4 +1,8 @@
-// Paquete del servidor.
+// =====================================================================
+//   Maneja los SERVICIOS básicos (luz, agua, internet...) y sus FACTURAS:
+//   verlos, buscarlos por cédula y, solo el laboratorio, crearlos.
+// =====================================================================
+
 package com.billetera.servidor
 
 import kotlinx.coroutines.Dispatchers
@@ -6,32 +10,26 @@ import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 import java.math.RoundingMode
 import java.sql.Connection
-import java.sql.SQLIntegrityConstraintViolationException     // MySQL: se repitió una llave primaria.
+import java.sql.SQLIntegrityConstraintViolationException
 import kotlin.random.Random
 
 private val log = LoggerFactory.getLogger("ServiciosRepositorio")
 
-// Íconos que la app sabe dibujar para un servicio (la app los traduce a un ícono de Material).
+// Íconos que la app sabe dibujar.
 val ICONOS_SERVICIO = setOf("RAYO", "GOTA", "WIFI", "TELEFONO", "GAS", "TV", "BASURA", "OTRO")
 
-// Código de un servicio: de 3 a 10 letras MAYÚSCULAS sin espacios (ej. "GAS", "TELEFONO").
+// Código de servicio: de 3 a 10 letras mayúsculas (ej. "GAS").
 private val PATRON_CODIGO_SERVICIO = Regex("^[A-Z]{3,10}$")
 
-// Prefijo del código de contrato de las facturas NUEVAS (ej. "LZ482913"). Para los servicios que
-// cree el laboratorio se usan las 2 primeras letras de su código (ej. GAS -> "GA").
+// Letras con que empieza el código de una factura nueva (ej. "LZ482913").
 private val PREFIJOS = mapOf("LUZ" to "LZ", "AGUA" to "AG", "INTERNET" to "IN")
 
-// SERVICIOS BÁSICOS Y SUS FACTURAS (Fase 8):
-//  - Cualquier usuario puede ver el CATÁLOGO de servicios y BUSCAR las facturas de una cédula.
-//  - Solo el LABORATORIO (la "empresa de servicios") puede crear SERVICIOS nuevos, listar TODAS las
-//    facturas y EMITIR facturas nuevas.
-// Igual que los demás repositorios: JDBC bloquea el hilo, así que todo corre en Dispatchers.IO.
+// Servicios y facturas.
 object ServiciosRepositorio {
 
-    // GET /servicios -> catálogo de servicios (LUZ, AGUA, INTERNET y los que se hayan agregado).
+    // Devuelve la lista de servicios: primero LUZ, AGUA, INTERNET y luego los nuevos.
     suspend fun servicios(): List<ServicioRespuesta> = withContext(Dispatchers.IO) {
         BaseDeDatos.transaccion { con ->
-            // Orden: primero los 3 de siempre (LUZ, AGUA, INTERNET) y luego los nuevos, del más antiguo al más nuevo.
             con.prepareStatement(
                 "SELECT codigo, nombre, icono FROM servicios " +
                     "ORDER BY CASE codigo WHEN 'LUZ' THEN 1 WHEN 'AGUA' THEN 2 WHEN 'INTERNET' THEN 3 ELSE 4 END, creado, codigo"
@@ -43,7 +41,7 @@ object ServiciosRepositorio {
         }
     }
 
-    // POST /admin/servicios (solo laboratorio): agrega un servicio nuevo al catálogo (ej. GAS).
+    // Agrega un servicio nuevo, ej. GAS (solo el laboratorio).
     suspend fun crearServicio(req: NuevoServicioRequest): ServicioRespuesta = withContext(Dispatchers.IO) {
         val codigo = req.codigo.trim().uppercase()
         val nombre = req.nombre.trim()
@@ -58,14 +56,13 @@ object ServiciosRepositorio {
                 }
             }
         } catch (e: SQLIntegrityConstraintViolationException) {
-            throw servicioExiste(codigo)        // La llave primaria detectó un código repetido -> 409.
+            throw servicioExiste(codigo)        // Ya existe ese código.
         }
         log.info("Servicio creado: $codigo ($nombre, ícono $icono)")
         ServicioRespuesta(codigo, nombre, icono)
     }
 
-    // GET /facturas?cedula=...&servicio=...  -> facturas de esa cédula y ese servicio.
-    // Primero las PENDIENTES (pagado = FALSE va antes que TRUE) y luego por código.
+    // Busca las facturas de una persona por su cédula (primero las que faltan pagar).
     suspend fun porCedula(cedula: String, servicio: String): List<ContratoRespuesta> = withContext(Dispatchers.IO) {
         val ced = cedula.trim()
         val serv = servicio.trim().uppercase()
@@ -81,8 +78,7 @@ object ServiciosRepositorio {
         }
     }
 
-    // GET /admin/facturas?estado=PENDIENTES|PAGADAS|TODAS&servicio=LUZ  (solo laboratorio).
-    // La consulta se ARMA según los filtros, pero los valores siempre van con "?" (sin inyección SQL).
+    // Lista todas las facturas, con filtro opcional por estado y servicio (solo el laboratorio).
     suspend fun listar(estado: String?, servicio: String?): List<ContratoRespuesta> = withContext(Dispatchers.IO) {
         val condiciones = mutableListOf<String>()
         val valores = mutableListOf<String>()
@@ -93,7 +89,7 @@ object ServiciosRepositorio {
         servicio?.trim()?.uppercase()?.takeIf { it.isNotEmpty() }?.let { condiciones += "servicio = ?"; valores += it }
         val where = if (condiciones.isEmpty()) "" else "WHERE " + condiciones.joinToString(" AND ")
         BaseDeDatos.transaccion { con ->
-            // Las pendientes primero; las pagadas después, las más recientes arriba.
+            // Primero las pendientes; luego las pagadas, las más recientes arriba.
             con.prepareStatement("SELECT $COLUMNAS_FACTURA FROM contratos $where ORDER BY pagado, fecha_pago DESC, codigo DESC").use { ps ->
                 valores.forEachIndexed { i, v -> ps.setString(i + 1, v) }
                 ps.executeQuery().use { rs -> buildList { while (rs.next()) add(leerFactura(rs)) } }
@@ -101,9 +97,7 @@ object ServiciosRepositorio {
         }
     }
 
-    // POST /admin/facturas (solo laboratorio): EMITE una factura PENDIENTE con un código nuevo.
-    // Es lo que hace la empresa de servicios cada mes: le "cobra" a una persona (por su cédula);
-    // luego esa persona la ve al buscar su cédula en "Pagar servicios" y la paga.
+    // Emite una factura nueva sin pagar para una cédula (solo el laboratorio).
     suspend fun crear(req: NuevaFacturaRequest): ContratoRespuesta = withContext(Dispatchers.IO) {
         val cedula = req.cedula.trim()
         val titular = req.titular.trim()
@@ -115,8 +109,7 @@ object ServiciosRepositorio {
         val monto = validarMonto(req.monto).setScale(2, RoundingMode.HALF_UP)
         BaseDeDatos.transaccion { con -> validarServicio(con, servicio) }
         val prefijo = PREFIJOS[servicio] ?: servicio.take(2)
-        // El código es el prefijo del servicio + 6 dígitos al azar. Si por casualidad ya existe
-        // (la llave primaria lo rechaza), se intenta con otro número (hasta 5 veces).
+        // Código = letras del servicio + 6 números al azar; si ya existe, prueba otro (hasta 5 veces).
         repeat(5) {
             val codigo = prefijo + Random.nextInt(100_000, 1_000_000)
             try {
@@ -138,7 +131,7 @@ object ServiciosRepositorio {
         throw datoInvalido("No se pudo generar un código de contrato; intenta de nuevo")
     }
 
-    // Lanza 400 si el servicio no existe en el catálogo (tabla servicios).
+    // Revisa que el servicio exista; si no, error 400.
     private fun validarServicio(con: Connection, servicio: String) {
         val validos = codigosServicio(con)
         if (servicio !in validos) throw datoInvalido("Servicio no válido. Usa: $validos")

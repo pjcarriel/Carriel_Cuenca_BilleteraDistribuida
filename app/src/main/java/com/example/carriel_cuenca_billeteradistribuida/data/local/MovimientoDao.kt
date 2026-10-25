@@ -1,33 +1,33 @@
-// Paquete de la base de datos local.
+// =====================================================================
+//   Son las órdenes para guardar y leer los movimientos del historial
+//   que se guardan en el teléfono.
+// =====================================================================
+
 package com.example.carriel_cuenca_billeteradistribuida.data.local
 
 import androidx.room.Dao
 import androidx.room.Insert
-import androidx.room.OnConflictStrategy      // Qué hacer si se viola el índice único.
+import androidx.room.OnConflictStrategy      // Qué hacer si el movimiento ya estaba guardado.
 import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 
-// Consultas de la tabla "movimientos".
-// DAO = Data Access Object. Solo escribimos la INTERFAZ con anotaciones; Room genera el código real.
-// Las funciones "suspend" Room las ejecuta fuera del hilo principal; las que devuelven Flow
-// no son suspend porque solo crean el Flow (la lectura ocurre al hacer collect).
+// Lista de órdenes de la tabla "movimientos"; Room crea el código que las ejecuta.
 @Dao
 interface MovimientoDao {
 
-    // Inserta un movimiento. IGNORE: si ya existe (misma cuenta y transaccionId), no hace nada
-    // y devuelve -1. Así un comprobante repetido no aparece dos veces en el historial.
+    // Guarda un movimiento. Si ya estaba, no lo repite (devuelve -1).
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertar(movimiento: MovimientoEntity): Long
 
-    // Inserta muchos de una vez (historial descargado del servidor), ignorando los repetidos.
+    // Guarda de golpe el historial que baja del servidor, sin repetir.
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertarTodos(movimientos: List<MovimientoEntity>): List<Long>
 
-    // Historial de UNA cuenta, el más reciente primero. Flow: se vuelve a emitir con cada cambio.
+    // Historial de una cuenta, del más nuevo al más viejo. Se actualiza solo.
     @Query("SELECT * FROM movimientos WHERE cuenta = :cuenta ORDER BY fechaHora DESC")
     fun observarTodos(cuenta: String): Flow<List<MovimientoEntity>>
 
-    // Cuenta cuántos movimientos tiene una cuenta. Lectura única (suspend), usada en el panel de pruebas.
+    // Cuántos movimientos tiene una cuenta (para el panel de pruebas).
     @Query("SELECT COUNT(*) FROM movimientos WHERE cuenta = :cuenta")
     suspend fun contar(cuenta: String): Int
 }

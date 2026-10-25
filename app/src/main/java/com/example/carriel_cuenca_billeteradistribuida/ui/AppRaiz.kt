@@ -1,4 +1,8 @@
-// Paquete de la interfaz gráfica.
+// =====================================================================
+//   Es el PORTERO de la app: decide si el usuario ve el Login, el Registro
+//   o su billetera, y le pregunta "¿Sigues ahí?" si lleva rato sin tocar nada.
+// =====================================================================
+
 package com.example.carriel_cuenca_billeteradistribuida.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -20,12 +24,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable         // remember que sobrevive a la rotación.
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput             // Detecta toques en la pantalla.
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -36,62 +40,52 @@ import com.example.carriel_cuenca_billeteradistribuida.ui.auth.SesionViewModel
 import com.example.carriel_cuenca_billeteradistribuida.util.PERMISO_RED_LOCAL
 import com.example.carriel_cuenca_billeteradistribuida.util.necesitaPermisoRedLocal
 
-// RAÍZ DE LA APP: decide qué pantalla mostrar según el estado de la sesión,
-// detecta la ACTIVIDAD del usuario (cada toque) y muestra el aviso de cierre por inactividad.
-// viewModel(factory = ...) = obtiene el SesionViewModel; la Factory sabe cómo crearlo con sus dependencias.
-// El ViewModel sobrevive a la rotación de pantalla (no se pierde la sesión al girar el teléfono).
+// Lo primero que ve el usuario: ruedita → Login/Registro → billetera.
 @Composable
 fun AppRaiz(sesionViewModel: SesionViewModel = viewModel(factory = SesionViewModel.Factory)) {
-    // collectAsStateWithLifecycle: cada StateFlow del ViewModel se vuelve estado de Compose;
-    // cuando cambia, esta pantalla se redibuja. Deja de escuchar si la app pasa a segundo plano.
-    val estado by sesionViewModel.estado.collectAsStateWithLifecycle()
-    val avisoSegundos by sesionViewModel.avisoSegundos.collectAsStateWithLifecycle()   // Segundos que faltan, o null.
+    // Datos de la sesión. Cuando cambian, la pantalla se actualiza sola.
+    val estado by sesionViewModel.estado.collectAsStateWithLifecycle()                 // Cargando, sin sesión o activa.
+    val avisoSegundos by sesionViewModel.avisoSegundos.collectAsStateWithLifecycle()   // Cuenta regresiva, o null.
     val mensaje by sesionViewModel.mensaje.collectAsStateWithLifecycle()               // Aviso para Login/Registro.
     val procesando by sesionViewModel.procesando.collectAsStateWithLifecycle()         // true = esperando al servidor.
 
-    // ---------- PERMISO DE RED LOCAL (Android 17): se pide ANTES del login, que ya usa la red ----------
+    // ---------- PERMISO DE RED LOCAL: se pide antes del login ----------
     val contexto = LocalContext.current
-    // permisoResuelto: true si NO hace falta pedirlo (Android antiguo o ya concedido) o si ya respondió.
+    // true si ya no hace falta pedir el permiso.
     var permisoResuelto by remember { mutableStateOf(!necesitaPermisoRedLocal(contexto)) }
-    // rememberLauncherForActivityResult: prepara la ventana del sistema "¿Permitir...?".
-    // La lambda se ejecuta cuando el usuario responde ("concedido" = true si aceptó).
+    // Ventanita "¿Permitir...?"; lo de adentro pasa cuando el usuario responde.
     val pedirPermiso = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { concedido ->
         permisoResuelto = true
         if (!concedido) sesionViewModel.avisar("Sin el permiso de red local la app no puede conectarse al servidor")
     }
-    // LaunchedEffect(Unit) = se ejecuta UNA vez al abrir la app: si falta el permiso, lo pide.
+    // Al abrir la app: si falta el permiso, se pide.
     LaunchedEffect(Unit) { if (!permisoResuelto) pedirPermiso.launch(PERMISO_RED_LOCAL) }
 
-    // ¿Login o Registro? Estado de la pantalla; rememberSaveable lo conserva al rotar.
+    // ¿Mostrar Login o Registro? (se recuerda aunque se gire el teléfono).
     var mostrarRegistro by rememberSaveable { mutableStateOf(false) }
 
-    // Caja que ocupa toda la pantalla y DETECTA CADA TOQUE para reiniciar el contador de inactividad.
-    // PointerEventPass.Initial: "mira" el toque ANTES que los botones, sin consumirlo (los botones siguen funcionando).
+    // Caja de toda la pantalla que nota cada toque para reiniciar el contador de inactividad.
     Surface(modifier = Modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                // pointerInput corre una corrutina que escucha los toques de esta caja.
                 .pointerInput(Unit) {
                     awaitPointerEventScope {
-                        // Bucle infinito: espera (suspende) el siguiente toque, avisa actividad y vuelve a esperar.
+                        // Espera un toque, avisa actividad y vuelve a esperar (sin bloquear los botones).
                         while (true) {
                             awaitPointerEvent(PointerEventPass.Initial)
-                            sesionViewModel.registrarActividad()    // Reinicia el contador de inactividad.
+                            sesionViewModel.registrarActividad()
                         }
                     }
                 }
         ) {
-            // "when" sobre la sealed interface EstadoSesion: una pantalla por estado.
-            // "val e = estado" guarda una copia para poder leer e.sesion dentro de cada caso.
+            // Una pantalla para cada estado de la sesión.
             when (val e = estado) {
-                // Cargando: se está leyendo de Room si había una sesión guardada. Ruedita centrada.
+                // Cargando: ruedita en el centro.
                 EstadoSesion.Cargando ->
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
 
-                // Sin sesión: Login o Registro según "mostrarRegistro".
-                // "sesionViewModel::registrar" = referencia a la función (se pasa sin llamarla).
-                // mensajeVisto() borra el aviso anterior al cambiar de pantalla o al escribir.
+                // Sin sesión: Login o Registro.
                 EstadoSesion.SinSesion ->
                     if (mostrarRegistro) {
                         RegistroScreen(
@@ -111,14 +105,10 @@ fun AppRaiz(sesionViewModel: SesionViewModel = viewModel(factory = SesionViewMod
                         )
                     }
 
-                // Sesión activa: se muestra la billetera del usuario. "is" = comprueba el tipo
-                // (Activa es una clase con datos: la sesión y el saludo de bienvenida).
+                // Sesión activa: la billetera del usuario (se crea de cero si cambia de usuario).
                 is EstadoSesion.Activa ->
-                    // key(cuenta): si cambia el usuario, Compose crea TODO de nuevo (otro ViewModel, otro WebSocket).
-                    // Solo conectamos cuando el permiso de red ya se resolvió.
                     if (permisoResuelto) key(e.sesion.cuenta) {
-                        // Al entrar, la próxima vez que se cierre sesión se verá el Login (no el Registro).
-                        // LaunchedEffect: cambiar estado DENTRO del dibujado no está permitido; aquí sí.
+                        // Al cerrar sesión, que se vea el Login y no el Registro.
                         LaunchedEffect(Unit) { mostrarRegistro = false }
                         BilleteraApp(
                             sesion = e.sesion,
@@ -133,10 +123,7 @@ fun AppRaiz(sesionViewModel: SesionViewModel = viewModel(factory = SesionViewMod
         }
     }
 
-    // ---------- AVISO DE CIERRE POR INACTIVIDAD (últimos 30 segundos) ----------
-    // Solo se dibuja si avisoSegundos NO es null ("?.let"). Como avisoSegundos cambia cada segundo,
-    // el diálogo se redibuja solo y la cuenta regresiva baja en pantalla.
-    // Está FUERA del Surface para quedar encima de cualquier pantalla.
+    // Aviso "¿Sigues ahí?" con la cuenta regresiva (últimos 30 segundos).
     avisoSegundos?.let { segundos ->
         AlertDialog(
             onDismissRequest = sesionViewModel::registrarActividad,     // Tocar fuera = seguir conectado.

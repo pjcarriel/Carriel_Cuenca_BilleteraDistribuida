@@ -1,13 +1,17 @@
-// Paquete del servidor.
+// =====================================================================
+//   Es el ARRANQUE del servidor: conecta la base de datos, lo enciende
+//   en el puerto 8090 y le agrega JSON, avisos en tiempo real y errores.
+// =====================================================================
+
 package com.billetera.servidor
 
 import io.ktor.http.HttpStatusCode
-import io.ktor.serialization.kotlinx.json.json                     // Formato JSON para ContentNegotiation.
+import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
-import io.ktor.server.application.install                         // Instala un "plugin" en el servidor.
-import io.ktor.server.engine.embeddedServer                       // Crea el servidor dentro de nuestra app.
-import io.ktor.server.cio.CIO                                     // Motor de red CIO (basado en corrutinas).
-import io.ktor.server.plugins.BadRequestException                 // JSON mal formado o incompleto.
+import io.ktor.server.application.install
+import io.ktor.server.engine.embeddedServer
+import io.ktor.server.cio.CIO
+import io.ktor.server.plugins.BadRequestException
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.response.respond
@@ -17,75 +21,60 @@ import io.ktor.server.websocket.timeout
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import org.slf4j.LoggerFactory
-import kotlin.time.Duration.Companion.seconds                      // Permite escribir 15.seconds.
+import kotlin.time.Duration.Companion.seconds
 
-// LOGGER: escribe mensajes en la consola con hora e hilo (formato definido en logback.xml).
-// "private val" a nivel de archivo = solo se usa dentro de este archivo.
+// Escribe mensajes en la consola para ver qué pasa en el servidor.
 private val log = LoggerFactory.getLogger("Servidor")
 
-// Puerto donde escucha el servidor. Desde el emulador se llega con http://10.0.2.2:8090
+// Puerto del servidor. Desde el emulador se entra con http://10.0.2.2:8090
 const val PUERTO = 8090
 
-// PUNTO DE ENTRADA: lo que se ejecuta con "gradlew run".
+// Lo primero que se ejecuta: conecta MySQL y enciende el servidor.
 fun main() {
-    BaseDeDatos.iniciar()                                // 1. Conectar a MySQL y preparar las tablas.
+    BaseDeDatos.iniciar()
     log.info("Servidor iniciando en http://localhost:$PUERTO  (emulador: http://10.0.2.2:$PUERTO)")
-    // 2. Crear y arrancar el servidor con el motor CIO. host "0.0.0.0" = aceptar conexiones de cualquier interfaz.
-    // Usamos CIO y no Netty: en las pruebas (Windows), Netty respondía a la PC pero NO a las conexiones
-    // que llegan desde el emulador (10.0.2.2); con CIO ambas funcionan. CIO es 100 % Kotlin y usa corrutinas.
-    // "module = Application::modulo" = referencia a la función que configura el servidor.
+    // "0.0.0.0" = acepta conexiones de la PC y del emulador.
     embeddedServer(CIO, port = PUERTO, host = "0.0.0.0", module = Application::modulo)
-        .start(wait = true)                              // wait = true: el programa queda escuchando.
+        .start(wait = true)                              // Se queda escuchando.
 }
 
-// Configuración del servidor: "plugins" que agregan capacidades.
-// "Application.modulo()" es una FUNCIÓN DE EXTENSIÓN: se escribe como si fuera un método de Application,
-// por eso dentro podemos llamar directo a install(...) sin escribir "application.install(...)".
+// Configura el servidor: le agrega sus "piezas".
 fun Application.modulo() {
 
-    // JSON automático: call.receive<T>() lee JSON y call.respond(obj) responde JSON.
+    // Para leer y responder en JSON. Si llegan campos de más, se ignoran.
     install(ContentNegotiation) {
         json(Json {
-            prettyPrint = true          // JSON con saltos de línea (más legible en Postman).
-            ignoreUnknownKeys = true    // Si el cliente manda campos extra, se ignoran.
+            prettyPrint = true
+            ignoreUnknownKeys = true
         })
     }
 
-    // WebSockets: LATIDO (heartbeat). Cada 2 s el servidor envía un "ping"; si en 3 s no llega el "pong",
-    // la conexión se considera muerta y se cierra. Así detectamos en unos 3-5 s a un celular que
-    // perdió internet de golpe: ese celular no alcanza a avisar que se va, así que la única forma de
-    // saberlo es notar que dejó de responder. (Un ping pesa unos pocos bytes: no afecta el rendimiento.)
+    // Avisos en tiempo real. Cada 2 s pregunta "¿sigues ahí?"; si en 3 s no responde, lo da por desconectado.
     install(WebSockets) {
         pingPeriod = 2.seconds
         timeout = 3.seconds
     }
 
-    // Manejo CENTRALIZADO de errores: convierte excepciones en respuestas HTTP con JSON.
-    // Gracias a esto, las rutas solo hacen "throw" y NO necesitan try/catch: StatusPages atrapa la
-    // excepción y responde. Si una excepción calza con varios bloques, Ktor usa el MÁS ESPECÍFICO
-    // (por eso ErrorNegocio gana sobre Throwable, que es el "atrapa todo").
-    // "call" = la petición en curso (con ella se responde); "error" = la excepción lanzada.
+    // Convierte cada error en una respuesta con mensaje para la app.
     install(StatusPages) {
-        // Errores de negocio (400 monto inválido, 404 cuenta no existe, 409 saldo insuficiente).
+        // Errores de reglas (monto inválido, cuenta no existe, sin saldo).
         exception<ErrorNegocio> { call, error ->
             log.warn("Error ${error.estado.value} ${error.codigo}: ${error.message}")
             call.respond(error.estado, ErrorRespuesta(error.codigo, error.message))
         }
-        // JSON mal escrito o con campos faltantes -> 400.
+        // JSON mal escrito -> error 400.
         exception<BadRequestException> { call, error ->
             call.respond(HttpStatusCode.BadRequest, ErrorRespuesta("JSON_INVALIDO", "Revisa el JSON enviado: ${error.message}"))
         }
-        // Cualquier otro error inesperado -> 500 (el servidor no se cae).
+        // Cualquier otro error -> 500, pero el servidor sigue funcionando.
         exception<Throwable> { call, error ->
-            // Una corrutina CANCELADA no es un error (ej. un WebSocket que se cierra porque el
-            // celular se desconectó): no se registra ni se responde nada.
-            // "return@exception" = salir SOLO de este bloque (una etiqueta), no de toda la función.
+            // Un celular que se desconectó no es un error real: se ignora.
             if (error is CancellationException) return@exception
             log.error("Error inesperado", error)
             call.respond(HttpStatusCode.InternalServerError, ErrorRespuesta("ERROR_INTERNO", error.message ?: "Error interno"))
         }
     }
 
-    // Registrar las rutas REST y WebSocket (Rutas.kt).
+    // Registra todas las rutas (Rutas.kt).
     configurarRutas()
 }

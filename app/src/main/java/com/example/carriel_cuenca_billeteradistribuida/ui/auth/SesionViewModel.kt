@@ -1,4 +1,8 @@
-// Paquete de la autenticación (login, registro y sesión).
+// =====================================================================
+//   El "cerebro" de la sesión: decide si se ve el Login o la billetera,
+//   hace el login y el registro, y cierra la sesión si el usuario no usa la app.
+// =====================================================================
+
 package com.example.carriel_cuenca_billeteradistribuida.ui.auth
 
 import androidx.lifecycle.ViewModel
@@ -12,7 +16,6 @@ import com.example.carriel_cuenca_billeteradistribuida.data.SesionRepository
 import com.example.carriel_cuenca_billeteradistribuida.data.local.BilleteraDatabase
 import com.example.carriel_cuenca_billeteradistribuida.data.local.SesionEntity
 import com.example.carriel_cuenca_billeteradistribuida.data.remote.ConfigServidor
-import com.example.carriel_cuenca_billeteradistribuida.data.remote.RetrofitClient
 import com.example.carriel_cuenca_billeteradistribuida.util.logHilo
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -24,13 +27,14 @@ import kotlinx.coroutines.launch
 // Segundos ANTES del cierre en los que se muestra el aviso "Tu sesión se cerrará en...".
 private const val SEGUNDOS_AVISO = 30
 
-// Cada cuánto, como máximo, se avisa al servidor que el usuario sigue activo ("latido").
+// Cada cuánto, como máximo, se avisa al servidor que el usuario sigue activo.
+// A este aviso lo llamamos "latido" (como el latido del corazón: "sigo aquí").
 private const val INTERVALO_LATIDO_MS = 60_000L
 
 // Mensaje para la pantalla de acceso: texto y si es un ERROR (rojo) o solo INFORMACIÓN (azul).
 data class AvisoAcceso(val texto: String, val esError: Boolean)
 
-// Estado de la sesión: decide QUÉ PANTALLA se muestra (sealed interface = familia cerrada).
+// Las 3 situaciones posibles de la sesión. Según cuál sea, se muestra una pantalla u otra.
 sealed interface EstadoSesion {
     data object Cargando : EstadoSesion                          // Revisando si hay sesión guardada.
     data object SinSesion : EstadoSesion                         // Mostrar Login / Registro.
@@ -38,11 +42,11 @@ sealed interface EstadoSesion {
     data class Activa(val sesion: SesionEntity, val saludo: String? = null) : EstadoSesion
 }
 
-// VIEWMODEL DE SESIÓN: login, registro, cierre y el TEMPORIZADOR DE INACTIVIDAD.
+// VIEWMODEL DE SESIÓN: login, registro, cierre de sesión y el reloj de inactividad.
+// (Un ViewModel guarda los datos de la pantalla y la lógica, separados del dibujo.)
 class SesionViewModel(private val repositorio: SesionRepository) : ViewModel() {
 
-    // Mismo patrón en todo el ViewModel: MutableStateFlow privado ("_") que solo se cambia aquí,
-    // y StateFlow público de solo lectura que la pantalla observa. Empieza en Cargando.
+    // Estado de la sesión ("_estado" se cambia aquí; "estado" lo lee la pantalla).
     private val _estado = MutableStateFlow<EstadoSesion>(EstadoSesion.Cargando)
     val estado: StateFlow<EstadoSesion> = _estado.asStateFlow()
 
@@ -58,17 +62,17 @@ class SesionViewModel(private val repositorio: SesionRepository) : ViewModel() {
     private val _procesando = MutableStateFlow(false)
     val procesando: StateFlow<Boolean> = _procesando.asStateFlow()
 
-    // Momento del último toque del usuario y del último latido enviado al servidor.
-    // Son "var" normales (no StateFlow) porque la pantalla no los muestra; solo los usa el vigilante.
+    // Hora del último toque del usuario y del último latido enviado al servidor.
+    // La pantalla no los muestra; solo los usa el vigilante de inactividad.
     private var ultimaActividad = 0L
     private var ultimoLatido = 0L
 
-    // Corrutina que vigila la inactividad. "Job?" = null si no hay sesión.
+    // Tarea en segundo plano que vigila la inactividad (null si no hay sesión).
     private var vigilante: Job? = null
 
     init {
-        // Al abrir la app: ¿hay una sesión guardada y todavía vigente?
-        // La lectura de Room es suspend: la corrutina espera sin congelar la pantalla (que muestra Cargando).
+        // Al abrir la app: ¿hay una sesión guardada en el teléfono y todavía vale?
+        // Mientras se revisa, la pantalla muestra "Cargando" sin congelarse.
         viewModelScope.launch {
             val guardada = repositorio.sesionGuardada()
             when {
@@ -78,10 +82,8 @@ class SesionViewModel(private val repositorio: SesionRepository) : ViewModel() {
                 System.currentTimeMillis() - guardada.ultimaActividad > limiteMs(guardada) ->
                     when (val r = repositorio.latido()) {
                         is Resultado.Exito -> activar(guardada, saludo = null)
-                        // SIN CONEXIÓN (no hubo respuesta HTTP): abrimos la billetera con los datos de Room
-                        // (historial y último saldo). Al volver el servidor, si la sesión venció, el WebSocket
-                        // o la primera petición recibirán 401 y la app volverá al login.
-                        // (No hace falta saludo: la billetera ya avisa "Sin conexión... últimos datos guardados".)
+                        // Sin conexión: se abre la billetera con los datos guardados en el teléfono.
+                        // Si el servidor dijo que la sesión venció, se cierra y se avisa.
                         is Resultado.Error -> if (r.codigoHttp == null) {
                             logHilo("SesionViewModel: servidor inalcanzable, abriendo en modo sin conexión")
                             activar(guardada, saludo = null)
@@ -98,9 +100,10 @@ class SesionViewModel(private val repositorio: SesionRepository) : ViewModel() {
 
     // ---------------- ACCIONES DE LA PANTALLA DE ACCESO ----------------
 
-    // La llave { ... } al final es la LAMBDA "accion" que recibe acceder() (sintaxis de "trailing lambda").
+    // Inicia sesión con usuario y contraseña.
     fun login(usuario: String, password: String) = acceder { repositorio.login(usuario, password) }
 
+    // Crea una cuenta nueva y entra directamente.
     fun registrar(nombre: String, usuario: String, password: String) =
         acceder(esRegistro = true) { repositorio.registrar(nombre, usuario, password) }
 
@@ -109,28 +112,28 @@ class SesionViewModel(private val repositorio: SesionRepository) : ViewModel() {
         _mensaje.value = null
     }
 
-    // Mensaje informativo (ej. si el usuario negó el permiso de red local).
+    // Muestra un mensaje en la pantalla de acceso (ej. si el usuario negó el permiso de red local).
     fun avisar(texto: String) {
         _mensaje.value = AvisoAcceso(texto, esError = true)
     }
 
-    // Login y registro comparten la misma lógica: llamar, y si sale bien, activar la sesión.
-    // "accion: suspend () -> Resultado<SesionEntity>" = lambda suspendible que hace la llamada.
+    // Pasos comunes de login y registro: llamar al servidor y, si sale bien, abrir la sesión.
+    // "accion" es la llamada concreta (login o registro) que se va a hacer.
     private fun acceder(esRegistro: Boolean = false, accion: suspend () -> Resultado<SesionEntity>) {
-        if (_procesando.value) return
+        if (_procesando.value) return                          // Si ya se está enviando, no se repite.
         viewModelScope.launch {
             _procesando.value = true
             _mensaje.value = null
             when (val resultado = accion()) {
                 is Resultado.Exito -> {
-                    // substringBefore(" ") = solo el primer nombre ("Pamela Carriel" -> "Pamela").
+                    // Se toma solo el primer nombre ("Pamela Carriel" -> "Pamela") para el saludo.
                     val nombre = resultado.datos.nombre.substringBefore(" ")
                     val saludo = if (esRegistro) "¡Bienvenido/a, $nombre! Tu cuenta ${resultado.datos.cuenta} recibió $ 100.00 de regalo"
                     else "Hola de nuevo, $nombre"
                     activar(resultado.datos, saludo)
                 }
                 is Resultado.Error -> {
-                    // Sin respuesta HTTP = no se llegó al servidor: decimos A QUÉ dirección se intentó,
+                    // Si no se llegó al servidor, se muestra a qué dirección se intentó conectar,
                     // así se detecta enseguida una IP mal escrita.
                     val texto = if (resultado.codigoHttp == null)
                         "No se pudo conectar con el servidor (${ConfigServidor.host()}). Revisa la dirección y tu conexión."
@@ -144,14 +147,13 @@ class SesionViewModel(private val repositorio: SesionRepository) : ViewModel() {
 
     // ---------------- ACTIVIDAD E INACTIVIDAD ----------------
 
-    // Se llama en CADA toque de pantalla (y al escribir en los diálogos). Reinicia el contador.
+    // Se llama cada vez que el usuario toca la pantalla o escribe. Reinicia el reloj de inactividad.
     fun registrarActividad() {
         if (_estado.value !is EstadoSesion.Activa) return
         val ahora = System.currentTimeMillis()
         ultimaActividad = ahora
         _avisoSegundos.value = null
-        // Como mucho una vez por minuto: avisamos al servidor (latido) y guardamos en Room.
-        // Así la sesión del SERVIDOR tampoco expira mientras el usuario usa la app.
+        // Una vez por minuto como máximo: avisa al servidor que el usuario sigue activo.
         if (ahora - ultimoLatido > INTERVALO_LATIDO_MS) {
             ultimoLatido = ahora
             viewModelScope.launch {
@@ -165,18 +167,19 @@ class SesionViewModel(private val repositorio: SesionRepository) : ViewModel() {
     // El usuario pulsó "Cerrar sesión".
     fun cerrarSesion() = terminar(avisarServidor = true, mensaje = AvisoAcceso("Cerraste sesión correctamente", esError = false))
 
-    // El SERVIDOR rechazó la sesión (401 o cierre 1008 del WebSocket): volvemos al login.
+    // El servidor dijo que la sesión ya no es válida: volvemos al login con un mensaje.
     fun sesionInvalida(mensaje: String) = terminar(avisarServidor = false, mensaje = AvisoAcceso(mensaje, esError = true))
 
-    // El saludo de bienvenida ya se mostró: lo quitamos para no repetirlo (ej. al rotar).
+    // El saludo de bienvenida ya se mostró: lo quitamos para no repetirlo (ej. al girar el teléfono).
     fun saludoMostrado() {
         val actual = _estado.value
-        // copy() crea una COPIA de la data class cambiando solo "saludo" (al StateFlow se le asigna un valor nuevo).
+        // Se deja todo igual, pero sin el saludo.
         if (actual is EstadoSesion.Activa && actual.saludo != null) _estado.value = actual.copy(saludo = null)
     }
 
-    // ---------------- PRIVADAS ----------------
+    // ---------------- FUNCIONES INTERNAS ----------------
 
+    // Tiempo máximo sin uso antes de cerrar la sesión (los minutos pasados a milisegundos).
     private fun limiteMs(sesion: SesionEntity) = sesion.minutosInactividad * 60_000L
 
     // Abre la sesión en la app y arranca el vigilante de inactividad.
@@ -191,11 +194,10 @@ class SesionViewModel(private val repositorio: SesionRepository) : ViewModel() {
         vigilante = viewModelScope.launch { vigilarInactividad(limiteMs(sesion)) }
     }
 
-    // Cada segundo revisa cuánto falta. En los últimos 30 s muestra el aviso; al llegar a 0 cierra.
-    // Es una corrutina en el hilo main: "delay" ESPERA sin bloquear (la pantalla sigue respondiendo).
+    // VIGILANTE DE INACTIVIDAD: cada segundo revisa cuánto falta.
+    // En los últimos 30 s muestra el aviso; al llegar a 0, cierra la sesión.
     private suspend fun vigilarInactividad(limite: Long) {
-        // "while (true)" no es un bucle infinito peligroso: termina con "return" o cuando el Job se
-        // cancela (delay lanza CancellationException y la corrutina se detiene).
+        // Se repite hasta que se cierra la sesión o hasta que se detiene el vigilante.
         while (true) {
             delay(1_000)
             val restanteMs = limite - (System.currentTimeMillis() - ultimaActividad)
@@ -205,14 +207,14 @@ class SesionViewModel(private val repositorio: SesionRepository) : ViewModel() {
                     terminar(avisarServidor = true, mensaje = AvisoAcceso("Tu sesión se cerró por inactividad (${limite / 60_000} min sin uso)", esError = false))
                     return
                 }
-                // "+ 999" redondea hacia arriba: 29 400 ms -> 30 s.
+                // Segundos que faltan, redondeados hacia arriba (29,4 s -> 30 s).
                 restanteMs <= SEGUNDOS_AVISO * 1000L -> _avisoSegundos.value = ((restanteMs + 999) / 1000).toInt()
                 else -> _avisoSegundos.value = null
             }
         }
     }
 
-    // Cierra la sesión: vuelve a la pantalla de acceso y limpia la sesión local (y la del servidor).
+    // Cierra la sesión: vuelve a la pantalla de acceso y borra la sesión del teléfono (y del servidor).
     private fun terminar(avisarServidor: Boolean, mensaje: AvisoAcceso?) {
         if (_estado.value !is EstadoSesion.Activa) return     // Evita cerrar dos veces.
         vigilante?.cancel()
@@ -220,12 +222,12 @@ class SesionViewModel(private val repositorio: SesionRepository) : ViewModel() {
         _avisoSegundos.value = null
         _estado.value = EstadoSesion.SinSesion                 // La UI cambia al login de inmediato.
         _mensaje.value = mensaje
-        // Corrutina APARTE (no la del vigilante, que acabamos de cancelar): avisa al servidor y borra Room.
+        // En segundo plano: avisa al servidor y borra la sesión guardada en el teléfono.
         viewModelScope.launch { repositorio.cerrarSesion(avisarServidor) }
     }
 
     // ---------------- FÁBRICA ----------------
-    // Le dice a Android cómo construir este ViewModel (necesita el Repository, y este el DAO y el contexto).
+    // Le dice a Android cómo crear este ViewModel.
     companion object {
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {

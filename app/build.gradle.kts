@@ -38,9 +38,6 @@ android {
         versionCode = 5
         // Versión visible para el usuario.
         versionName = "1.4"
-
-        // Ejecutor de pruebas instrumentadas (plantilla).
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     // Configuración de FIRMA del APK, leída de keystore.properties.
@@ -85,7 +82,6 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
-    implementation(libs.androidx.compose.ui.tooling.preview)
     // Íconos de Material (billetera, rayo, gota, wifi...).
     implementation(libs.androidx.compose.material.icons.extended)
 
@@ -111,14 +107,8 @@ dependencies {
     // --- Corrutinas (Dispatchers.IO / Dispatchers.Main) ---
     implementation(libs.kotlinx.coroutines.android)
 
-    // --- Pruebas (plantilla) ---
+    // --- Pruebas unitarias (corren en la PC) ---
     testImplementation(libs.junit)
-    androidTestImplementation(platform(libs.androidx.compose.bom))
-    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
-    androidTestImplementation(libs.androidx.espresso.core)
-    androidTestImplementation(libs.androidx.junit)
-    debugImplementation(libs.androidx.compose.ui.test.manifest)
-    debugImplementation(libs.androidx.compose.ui.tooling)
 }
 
 // Nombre del archivo APK generado: "BilleteraCC-v1.4-release.apk" (en vez de "app-release.apk").

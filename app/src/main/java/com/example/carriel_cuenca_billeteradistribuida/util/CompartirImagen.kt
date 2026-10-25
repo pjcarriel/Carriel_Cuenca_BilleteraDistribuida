@@ -1,4 +1,8 @@
-// Paquete de utilidades generales.
+// =====================================================================
+//   Los botones Compartir y Descargar del comprobante: enviar la imagen
+//   por otras apps o guardarla en la Galería.
+// =====================================================================
+
 package com.example.carriel_cuenca_billeteradistribuida.util
 
 import android.content.ContentValues
@@ -8,23 +12,20 @@ import android.graphics.Bitmap
 import android.media.MediaScannerConnection     // Avisa a la Galería que hay una imagen nueva (Android 8 y 9).
 import android.os.Build
 import android.os.Environment
-import android.provider.MediaStore              // "Base de datos" de fotos y archivos compartidos de Android.
-import androidx.core.content.FileProvider       // Entrega archivos privados a otras apps de forma segura.
+import android.provider.MediaStore              // Donde Android guarda las fotos de la Galería.
+import androidx.core.content.FileProvider       // Pasa un archivo nuestro a otra app de forma segura.
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 
-// Carpeta (dentro de la caché privada de la app) donde se guardan las imágenes a compartir.
-// Debe coincidir con res/xml/rutas_compartidas.xml.
+// Carpeta privada donde se guarda la imagen antes de compartirla (igual que en rutas_compartidas.xml).
 private const val CARPETA = "comprobantes"
 
-// Álbum de la Galería donde se DESCARGAN los comprobantes (Imágenes/Billetera CC).
+// Nombre del álbum en la Galería.
 const val ALBUM_COMPROBANTES = "Billetera CC"
 
-// Guarda la imagen como PNG y abre el menú "Compartir" de Android (WhatsApp, correo, Drive...).
-//  1. Guardar el archivo es DISCO: se hace en Dispatchers.IO (nunca en el hilo main).
-//  2. Otra app no puede leer los archivos privados de la nuestra: FileProvider crea una dirección
-//     "content://" temporal y FLAG_GRANT_READ_URI_PERMISSION le da permiso SOLO a la app elegida.
+// Botón COMPARTIR: guarda la imagen y abre la lista de apps (WhatsApp, correo...).
+// El guardado se hace en un hilo de fondo para no congelar la pantalla.
 suspend fun compartirImagen(contexto: Context, imagen: Bitmap, nombre: String) {
     val archivo = withContext(Dispatchers.IO) {
         logHilo("Compartir: guardando $nombre.png")
@@ -33,7 +34,7 @@ suspend fun compartirImagen(contexto: Context, imagen: Bitmap, nombre: String) {
             f.outputStream().use { salida -> imagen.compress(Bitmap.CompressFormat.PNG, 100, salida) }
         }
     }
-    // De vuelta en el hilo main: abrir otra pantalla (el menú de compartir) es trabajo de la UI.
+    // Enlace temporal para que solo la app elegida pueda leer la imagen.
     val uri = FileProvider.getUriForFile(contexto, "${contexto.packageName}.archivos", archivo)
     val intento = Intent(Intent.ACTION_SEND).apply {
         type = "image/png"
@@ -41,19 +42,16 @@ suspend fun compartirImagen(contexto: Context, imagen: Bitmap, nombre: String) {
         putExtra(Intent.EXTRA_TEXT, "Comprobante de Billetera CC")
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
-    // createChooser: muestra la lista de apps; FLAG_ACTIVITY_NEW_TASK por si el contexto no es una Activity.
+    // Muestra la lista de apps para compartir.
     contexto.startActivity(Intent.createChooser(intento, "Compartir comprobante").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 }
 
-// DESCARGA la imagen en la GALERÍA del teléfono (álbum "Billetera CC"). Devuelve true si se guardó.
-// Todo es disco: corre en Dispatchers.IO.
-//  - Android 10 o superior: MediaStore. No hace falta ningún permiso; IS_PENDING = 1 oculta la imagen
-//    mientras se escribe y luego se pone en 0 para que aparezca en la Galería ya completa.
-//  - Android 8 y 9: se escribe en la carpeta pública Imágenes (requiere el permiso WRITE_EXTERNAL_STORAGE,
-//    que el diálogo pide antes de llamar aquí) y se avisa a la Galería con MediaScannerConnection.
+// Botón DESCARGAR: guarda la imagen en la Galería. Devuelve true si se guardó.
+// Se hace en un hilo de fondo porque escribe en la memoria del teléfono.
 suspend fun guardarEnGaleria(contexto: Context, imagen: Bitmap, nombre: String): Boolean = withContext(Dispatchers.IO) {
     logHilo("Descargar: guardando $nombre.png en la Galería")
     runCatching {
+        // Android 10 o más: no necesita permiso.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val resolver = contexto.contentResolver
             val datos = ContentValues().apply {
@@ -62,14 +60,15 @@ suspend fun guardarEnGaleria(contexto: Context, imagen: Bitmap, nombre: String):
                 put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/$ALBUM_COMPROBANTES")
                 put(MediaStore.Images.Media.IS_PENDING, 1)
             }
-            // insert crea la entrada en la Galería y devuelve su dirección (o null si falla).
+            // Crea el espacio para la imagen (si falla, devuelve false).
             val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, datos) ?: return@runCatching false
             resolver.openOutputStream(uri)?.use { salida -> imagen.compress(Bitmap.CompressFormat.PNG, 100, salida) }
             datos.clear()
-            datos.put(MediaStore.Images.Media.IS_PENDING, 0)    // Lista: ya se puede ver en la Galería.
+            datos.put(MediaStore.Images.Media.IS_PENDING, 0)    // Lista: ya se ve en la Galería.
             resolver.update(uri, datos, null, null)
             true
         } else {
+            // Android 8 y 9: se guarda en la carpeta Imágenes y se avisa a la Galería.
             @Suppress("DEPRECATION")                              // Única forma en Android 8 y 9.
             val carpeta = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), ALBUM_COMPROBANTES)
             carpeta.mkdirs()
@@ -79,6 +78,7 @@ suspend fun guardarEnGaleria(contexto: Context, imagen: Bitmap, nombre: String):
             true
         }
     }.getOrElse { e ->
+        // Si falla, se anota en el Logcat y devuelve false (la app no se cierra).
         logHilo("Descargar: no se pudo guardar (${e.javaClass.simpleName}: ${e.message})")
         false
     }

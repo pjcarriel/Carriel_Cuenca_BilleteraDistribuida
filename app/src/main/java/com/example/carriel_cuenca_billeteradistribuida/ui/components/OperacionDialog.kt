@@ -1,4 +1,8 @@
-// Paquete de componentes reutilizables.
+// =====================================================================
+//   La ventana donde el usuario escribe los datos de una operación
+//   (monto, cuenta, contrato o cédula). La app los revisa y arma el pedido.
+// =====================================================================
+
 package com.example.carriel_cuenca_billeteradistribuida.ui.components
 
 import androidx.compose.foundation.background
@@ -38,7 +42,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope          // Ámbito para lanzar corrutinas desde la UI.
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,15 +71,14 @@ import com.example.carriel_cuenca_billeteradistribuida.ui.theme.VerdeIngreso
 import kotlinx.coroutines.launch
 
 
-// EXPRESIONES REGULARES para validar lo que escribe el usuario.
-// Regex("""..."""): las comillas triples evitan tener que escapar las barras "\".
-// "^" = inicio del texto, "$" = fin, "\d" = un dígito, "{4,10}" = entre 4 y 10 veces.
+// REGLAS DE FORMATO (expresiones regulares): sirven para revisar si lo que
+// escribió el usuario tiene la forma correcta antes de enviarlo.
 private val PATRON_MONTO = Regex("""^\d+([.,]\d{1,2})?$""")      // Hasta 2 decimales: 50 | 50.5 | 50,25
 private val PATRON_CUENTA = Regex("""^\d{4,10}$""")              // Entre 4 y 10 dígitos.
 private val PATRON_CONTRATO = Regex("""^[A-Za-z0-9-]{4,20}$""")  // Letras, números o guion; 4 a 20.
 
-// DIÁLOGO de una operación: valida los datos, arma una Solicitud y se la entrega a quien lo abrió.
-// En PAGO DE SERVICIOS el usuario NO escribe el monto: primero CONSULTA la factura al servidor.
+// Ventana de una operación: revisa los datos y arma el pedido (Solicitud).
+// En el pago de servicios, primero se busca la factura en el servidor.
 @Composable
 fun OperacionDialog(
     tipo: TipoOperacion,                                        // Qué operación es (define título y campos).
@@ -83,19 +86,18 @@ fun OperacionDialog(
     estadoConexion: EstadoConexion,                             // Para bloquear el botón sin conexión.
     cuentaPropia: String,                                            // Para impedir transferirse a sí mismo.
     servicios: List<Servicio>,                                  // Catálogo de servicios (del servidor).
-    // "suspend" = función que puede ESPERAR (la respuesta del servidor) sin congelar la pantalla.
+    // Busca una factura por código de contrato. ("suspend" = puede esperar al servidor sin congelar la pantalla.)
     onConsultarFactura: suspend (servicio: String, codigo: String) -> Resultado<Factura>,
     // Busca las facturas de una cédula (pago "Por cédula").
     onBuscarFacturas: suspend (cedula: String, servicio: String) -> Resultado<List<Factura>>,
-    onActividad: () -> Unit,                                         // Escribir aquí también es "actividad".
-    onConfirmar: (Solicitud) -> Unit,                           // Se llama con la Solicitud ya validada.
+    onActividad: () -> Unit,                                         // Avisa que el usuario está escribiendo (no está inactivo).
+    onConfirmar: (Solicitud) -> Unit,                           // Se llama con el pedido ya revisado.
     onCancelar: () -> Unit                                      // Se llama al cerrar sin hacer nada.
 ) {
     val esPago = tipo == TipoOperacion.PAGO_SERVICIO            // true = pago de servicio (cambian los campos).
 
-    // ESTADO DEL DIÁLOGO: "remember { mutableStateOf(...) }" guarda un valor que SOBREVIVE a cada
-    // redibujado (recomposición); al cambiarlo, Compose vuelve a dibujar lo que lo usa.
-    // "by" permite leerlo y escribirlo como una variable normal (ej. monto = "10").
+    // DATOS DE LA VENTANA: lo que el usuario va escribiendo y los mensajes de error.
+    // La ventana "recuerda" estos valores y se actualiza sola cuando cambian.
     var monto by remember { mutableStateOf("") }                // Texto del campo Monto.
     var cuentaDestino by remember { mutableStateOf("") }        // Cuenta a la que se transfiere.
     var servicio by remember { mutableStateOf(servicios.firstOrNull()?.codigo ?: "LUZ") }  // Servicio elegido (el primero).
@@ -110,21 +112,20 @@ fun OperacionDialog(
     var cedula by remember { mutableStateOf("") }
     var facturasCedula by remember { mutableStateOf<List<Factura>?>(null) }
 
-    // Ámbito de corrutinas del diálogo: la consulta se cancela sola si el diálogo se cierra.
+    // Permite hacer consultas al servidor en segundo plano.
+    // Si la ventana se cierra, la consulta se cancela sola.
     val alcance = rememberCoroutineScope()
 
-    // El cursor va al primer campo al abrir.
-    // FocusRequester: permite pedir el foco (cursor + teclado) para un campo concreto.
+    // Al abrir la ventana, el cursor y el teclado aparecen en el primer campo.
     val focoInicial = remember { FocusRequester() }
-    LaunchedEffect(Unit) { focoInicial.requestFocus() }         // LaunchedEffect(Unit): corre UNA vez al aparecer.
+    LaunchedEffect(Unit) { focoInicial.requestFocus() }         // Se ejecuta una sola vez, al abrir.
 
-    // Los diálogos son ventanas aparte (no las "ve" el detector de toques de la raíz):
-    // cada cambio en los campos cuenta como actividad para no cerrar la sesión mientras se escribe.
-    // LaunchedEffect(claves): se vuelve a ejecutar cada vez que cambia ALGUNA de esas variables.
+    // Cada vez que el usuario escribe algo, se avisa que hay actividad,
+    // para que la sesión no se cierre por inactividad mientras llena los datos.
     LaunchedEffect(monto, cuentaDestino, contrato, servicio) { onActividad() }
 
-    // Título del diálogo y verbo del botón según el tipo ("to" arma un par; "val (a, b)" lo separa).
-    // TRANSFERENCIA_RECIBIDA no tiene botón propio: va con depósito solo para cubrir todos los casos del enum.
+    // Título de la ventana y texto del botón según la operación.
+    // (TRANSFERENCIA_RECIBIDA no tiene botón propio; se pone junto a depósito solo para cubrir todos los casos.)
     val (titulo, verbo) = when (tipo) {
         TipoOperacion.DEPOSITO, TipoOperacion.TRANSFERENCIA_RECIBIDA -> "Depositar dinero" to "Depositar"
         TipoOperacion.RETIRO -> "Retirar efectivo" to "Retirar"
@@ -132,27 +133,24 @@ fun OperacionDialog(
         TipoOperacion.PAGO_SERVICIO -> "Pagar servicio básico" to "Pagar"
     }
 
-    // Monto a usar: en el pago, el de la FACTURA; en lo demás, el escrito (si es válido).
-    // takeIf { condición }: devuelve el valor si se cumple, o null si no. "?." sigue solo si no es null.
-    // Pago: la factura si existe y NO está pagada. Otros: el texto si cumple el patrón (con "," -> ".").
+    // Monto a usar: en el pago, el de la factura; en lo demás, el que escribió el usuario.
     val montoValido: Double? =
         if (esPago) factura?.takeIf { !it.pagado }?.monto
         else monto.takeIf { PATRON_MONTO.matches(it) }?.replace(',', '.')?.toDoubleOrNull()
 
-    // Consulta la factura al servidor (función suspend del ViewModel -> Repository -> Retrofit en IO).
-    // Función LOCAL (definida dentro del @Composable): puede leer y cambiar el estado de arriba.
+    // Pide al servidor la factura del código de contrato escrito.
     fun consultar() {
         val codigo = contrato.trim().uppercase()                // Sin espacios y en mayúsculas.
-        // Si el código no cumple el patrón, se muestra el error y NO se consulta ("return" sale de la función).
+        // Si el código no tiene el formato correcto, se muestra el error y no se consulta.
         if (!PATRON_CONTRATO.matches(codigo)) {
             errorExtra = "Contrato de 4 a 20 letras o números"
             return
         }
-        // launch: inicia una CORRUTINA; la pantalla sigue respondiendo mientras se espera al servidor.
+        // Se consulta en segundo plano: la pantalla sigue respondiendo mientras se espera al servidor.
         alcance.launch {
             consultando = true                                  // Muestra el círculo de carga.
             errorExtra = null                                   // Borra errores anteriores.
-            // "when (val r = ...)": guarda el resultado en r y revisa si fue Exito o Error (Resultado es una sealed class).
+            // Revisamos si la respuesta fue un éxito (llegó la factura) o un error.
             when (val r = onConsultarFactura(servicio, codigo)) {
                 is Resultado.Exito -> factura = r.datos         // Guardamos la factura recibida.
                 is Resultado.Error -> { factura = null; errorExtra = r.mensaje }   // Ej. "El contrato no existe".
@@ -161,9 +159,9 @@ fun OperacionDialog(
         }
     }
 
-    // Busca las facturas de la cédula escrita para el servicio elegido.
+    // Busca en el servidor las facturas de la cédula escrita, para el servicio elegido.
     fun buscarPorCedula() {
-        // Se valida AQUÍ con el algoritmo de la cédula ecuatoriana (util/Cedula.kt), sin ir al servidor.
+        // Primero se revisa en el teléfono que la cédula ecuatoriana sea real (util/Cedula.kt).
         if (!cedulaValida(cedula)) {
             errorExtra = "Cédula no válida (10 dígitos con dígito verificador correcto)"
             return
@@ -183,18 +181,18 @@ fun OperacionDialog(
         }
     }
 
-    // BÚSQUEDA AUTOMÁTICA: en cuanto la cédula tiene 10 dígitos (o se cambia de servicio con la cédula
-    // ya escrita), se buscan las facturas sin tener que tocar la lupa.
+    // BÚSQUEDA AUTOMÁTICA: apenas la cédula tiene 10 dígitos (o se cambia de servicio con la
+    // cédula ya escrita), se buscan las facturas sin tener que tocar la lupa.
     LaunchedEffect(porCedula, cedula, servicio) {
         if (porCedula && cedula.length == 10) buscarPorCedula()
     }
 
-    // Valida y entrega la solicitud.
+    // Se ejecuta al tocar el botón principal: revisa todo y, si está bien, envía el pedido.
     fun confirmar() {
         // PAGO: solo se confirma si ya se consultó la factura y no está pagada.
         if (esPago) {
-            val f = factura                                     // Copia local: así Kotlin puede hacer "smart cast" (factura es un var).
-            // "when" sin argumento: el primer caso verdadero da el mensaje; null = todo bien.
+            val f = factura                                     // Copia de la factura para revisarla.
+            // Se busca el primer problema que haya; si no hay ninguno, queda null (todo bien).
             errorExtra = when {
                 f == null && porCedula -> "Toca una de las facturas PENDIENTES de la lista para elegirla"
                 f == null -> "Primero consulta la factura (botón de la lupa)"
@@ -218,9 +216,9 @@ fun OperacionDialog(
             cuentaDestino == cuentaPropia -> "No puedes transferirte a tu propia cuenta"
             else -> null
         } else null
-        val valor = montoValido ?: return                       // "?: return": si el monto es null, sale de la función.
+        val valor = montoValido ?: return                       // Si no hay monto válido, no se sigue.
         if (errorMonto != null || errorExtra != null) return    // Si hay algún error, no se envía nada.
-        // Arma la Solicitud correcta según el tipo y se la entrega a quien abrió el diálogo.
+        // Arma el pedido correcto según la operación y se lo pasa a la pantalla.
         onConfirmar(
             when (tipo) {
                 TipoOperacion.DEPOSITO, TipoOperacion.TRANSFERENCIA_RECIBIDA -> Solicitud.Deposito(valor)
@@ -231,19 +229,19 @@ fun OperacionDialog(
         )
     }
 
-    // AlertDialog de Material 3: ventana flotante con ícono, título, contenido y botones.
+    // La ventana flotante: ícono, título, campos y botones.
     AlertDialog(
         onDismissRequest = onCancelar,                          // Tocar fuera o "atrás" = cancelar.
         icon = { Icon(iconoDeTipo(tipo, servicio), contentDescription = null) },  // Ícono según el tipo o el servicio.
-        title = { Text(titulo) },                               // Título del diálogo.
-        text = {                                                // Cuerpo del diálogo: los campos.
-            // verticalScroll: con la lista de facturas el contenido puede no caber; así se desplaza.
+        title = { Text(titulo) },                               // Título de la ventana.
+        text = {                                                // Cuerpo de la ventana: los campos.
+            // Si el contenido no cabe (por ejemplo, con muchas facturas), se puede desplazar.
             Column(
                 verticalArrangement = Arrangement.spacedBy(10.dp),       // Campos separados 10 dp.
                 modifier = Modifier.verticalScroll(rememberScrollState())
             ) {
 
-                // Aviso si se perdió la conexión con el diálogo abierto: el botón queda bloqueado.
+                // Aviso si se perdió la conexión con la ventana abierta: el botón queda bloqueado.
                 if (estadoConexion != EstadoConexion.EN_LINEA) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -273,15 +271,15 @@ fun OperacionDialog(
                         prefix = { Text("$ ") },                // Texto fijo antes del número.
                         singleLine = true,                      // Una sola línea.
                         isError = errorMonto != null,           // Pinta el campo en rojo si hay error.
-                        supportingText = errorMonto?.let { { Text(it) } },  // Mensaje de error bajo el campo (o nada).
-                        // Teclado numérico con decimales; la tecla de acción es "Siguiente" si falta la cuenta, si no "Listo".
+                        supportingText = errorMonto?.let { { Text(it) } },  // Mensaje de error bajo el campo (si hay).
+                        // Teclado de números con decimales.
                         keyboardOptions = KeyboardOptions(
                             keyboardType = KeyboardType.Decimal,
                             imeAction = if (tipo == TipoOperacion.TRANSFERENCIA_ENVIADA) ImeAction.Next else ImeAction.Done
                         ),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .focusRequester(focoInicial)        // Recibe el foco al abrir el diálogo.
+                            .focusRequester(focoInicial)        // Aquí aparece el cursor al abrir.
                     )
                 }
 
@@ -314,18 +312,17 @@ fun OperacionDialog(
                             label = { Text("Por cédula") }
                         )
                     }
-                    // ---------- PAGO: servicio + contrato (o cédula) + CONSULTA de la factura ----------
-                    // Una ficha (FilterChip) por servicio; la elegida queda marcada y muestra su ícono.
-                    // Los servicios vienen del CATÁLOGO del servidor; horizontalScroll: si son muchos, se deslizan.
+                    // ---------- PAGO: elegir servicio y buscar la factura ----------
+                    // Una ficha por servicio; la elegida muestra su ícono.
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
                         servicios.map { it.codigo }.forEach { opcion ->
                             val elegido = servicio == opcion    // ¿Es el servicio seleccionado?
                             FilterChip(
                                 selected = elegido,
-                                // Cambiar servicio invalida la consulta (y la lista de la cédula).
+                                // Al cambiar de servicio se borra la factura y la lista anteriores.
                                 onClick = { servicio = opcion; factura = null; facturasCedula = null; errorExtra = null },
                                 label = { Text(opcion, fontSize = 12.sp, maxLines = 1) },
-                                // leadingIcon: ícono a la izquierda solo en la ficha elegida (null = sin ícono).
+                                // Solo la ficha elegida muestra el ícono a la izquierda.
                                 leadingIcon = if (elegido) {
                                     { Icon(iconoDeServicio(opcion), contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) }
                                 } else null
@@ -336,7 +333,7 @@ fun OperacionDialog(
                         // ---------- POR CÉDULA: escribir la cédula y buscar ----------
                         OutlinedTextField(
                             value = cedula,
-                            // Solo dígitos y como máximo 10 (filter + take).
+                            // Solo acepta números y como máximo 10.
                             onValueChange = { cedula = it.filter { c -> c.isDigit() }.take(10); facturasCedula = null; factura = null; errorExtra = null },
                             label = { Text("Cédula del titular") },
                             placeholder = { Text("Ej. 1712345675") },
@@ -388,8 +385,8 @@ fun OperacionDialog(
                 Text(if (montoValido != null && montoValido > 0) "$verbo ${formatearMonto(montoValido)}" else verbo)
             }
         },
-        dismissButton = { TextButton(onClick = onCancelar) { Text("Cancelar") } },  // Botón secundario.
-        containerColor = MaterialTheme.colorScheme.surface      // Fondo del diálogo según el tema.
+        dismissButton = { TextButton(onClick = onCancelar) { Text("Cancelar") } },  // Botón para cerrar sin hacer nada.
+        containerColor = MaterialTheme.colorScheme.surface      // Color de fondo de la ventana.
     )
 }
 
@@ -427,7 +424,7 @@ private fun FilaFacturaCedula(factura: Factura, elegida: Boolean, onElegir: () -
     }
 }
 
-// Muestra la factura: titular, monto y si ya está pagada.
+// Tarjeta con la factura encontrada por código de contrato: titular, monto y si ya está pagada.
 @Composable
 private fun TarjetaFactura(factura: Factura) {
     val color = if (factura.pagado) RojoEgreso else VerdeIngreso  // Rojo si ya está pagada; verde si se puede pagar.
