@@ -27,8 +27,9 @@ object RetrofitClient {
     val clienteHttp: OkHttpClient = OkHttpClient.Builder()
         .addInterceptor(AuthInterceptor())          // 1. Pega el token al pedido.
         .addInterceptor(interceptorLog)             // 2. Lo anota en el Logcat.
-        .connectTimeout(5, TimeUnit.SECONDS)        // Si en 5 s no conecta -> error.
-        .readTimeout(10, TimeUnit.SECONDS)          // Si en 10 s no responde -> error.
+        // Tiempos largos porque el servidor gratis de Render tarda ~50 s en "despertar".
+        .connectTimeout(15, TimeUnit.SECONDS)       // Si en 15 s no conecta -> error.
+        .readTimeout(70, TimeUnit.SECONDS)          // Si en 70 s no responde -> error.
         .build()
 
     // Guarda la API ya armada junto con la dirección del servidor que usó.
