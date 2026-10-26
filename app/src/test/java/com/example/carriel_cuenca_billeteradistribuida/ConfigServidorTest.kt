@@ -14,10 +14,10 @@ import org.junit.Test
 class ConfigServidorTest {
 
     @Test
-    // Una IP sola queda igual; si no se escribe nada, se usa la del emulador.
+    // Una IP sola queda igual; si no se escribe nada, se usa la del servidor en la nube.
     fun ipSolaQuedaEnFormaCorta() {
         assertEquals("192.168.1.5", ConfigServidor.normalizar("192.168.1.5"))
-        assertEquals("10.0.2.2", ConfigServidor.normalizar("  "))
+        assertEquals("https://billetera-cc.onrender.com", ConfigServidor.normalizar("  "))
     }
 
     @Test

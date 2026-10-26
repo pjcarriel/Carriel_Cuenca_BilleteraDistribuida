@@ -35,9 +35,9 @@ android {
         // Android para el que está optimizada la app.
         targetSdk = 37
         // Número interno de versión (sube en cada entrega).
-        versionCode = 5
+        versionCode = 6
         // Versión visible para el usuario.
-        versionName = "1.4"
+        versionName = "1.5"
     }
 
     // Configuración de FIRMA del APK, leída de keystore.properties.
@@ -111,7 +111,7 @@ dependencies {
     testImplementation(libs.junit)
 }
 
-// Nombre del archivo APK generado: "BilleteraCC-v1.4-release.apk" (en vez de "app-release.apk").
+// Nombre del archivo APK generado: "BilleteraCC-v1.5-release.apk" (en vez de "app-release.apk").
 base {
-    archivesName = "BilleteraCC-v1.4"
+    archivesName = "BilleteraCC-v1.5"
 }

@@ -143,7 +143,7 @@ fun LoginScreen(
 }
 
 // Ventana para cambiar la dirección del servidor:
-//   emulador = 10.0.2.2; misma wifi = IP de la PC; cualquier red = dirección https del túnel de Cloudflare.
+//   nube = dirección https de Render (por defecto); emulador = 10.0.2.2; misma wifi = IP de la PC.
 @Composable
 private fun ConfigServidorDialog(onGuardado: (String) -> Unit, onCerrar: () -> Unit) {
     // Acceso a Android, necesario para guardar la dirección en el teléfono.
@@ -171,9 +171,9 @@ private fun ConfigServidorDialog(onGuardado: (String) -> Unit, onCerrar: () -> U
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                     modifier = Modifier.fillMaxWidth()
                 )
-                Text("• Emulador: 10.0.2.2", fontSize = 12.sp, color = Color.Gray)
+                Text("• Desde cualquier red: ${ConfigServidor.HOST_DEFECTO} (o déjalo vacío)", fontSize = 12.sp, color = Color.Gray)
+                Text("• Emulador con servidor local: 10.0.2.2", fontSize = 12.sp, color = Color.Gray)
                 Text("• Misma wifi: la IP de la PC (ej. 192.168.1.199); se usa el puerto ${ConfigServidor.PUERTO}", fontSize = 12.sp, color = Color.Gray)
-                Text("• Desde cualquier red: la dirección del túnel (ej. https://algo.trycloudflare.com)", fontSize = 12.sp, color = Color.Gray)
             }
         },
         confirmButton = {

@@ -1,6 +1,6 @@
 // =====================================================================
-//   Guarda la DIRECCIÓN del servidor: 10.0.2.2 en el emulador, la IP de la
-//   PC en un teléfono real, o la del túnel de Cloudflare desde internet.
+//   Guarda la DIRECCIÓN del servidor: por defecto el de la nube (Render);
+//   también 10.0.2.2 en el emulador o la IP de la PC en la misma wifi.
 // =====================================================================
 
 package com.example.carriel_cuenca_billeteradistribuida.data.remote
@@ -11,7 +11,7 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull     // Revisa si un texto es un
 // Configuración de la dirección del servidor; se guarda en el teléfono.
 object ConfigServidor {
 
-    const val HOST_DEFECTO = "10.0.2.2"      // Dirección con la que el emulador llega a la PC.
+    const val HOST_DEFECTO = "https://billetera-cc.onrender.com"   // Servidor en la nube: funciona desde cualquier red.
     const val PUERTO = 8090                  // Puerto donde escucha el servidor.
 
     private const val PREFS = "config_servidor"
