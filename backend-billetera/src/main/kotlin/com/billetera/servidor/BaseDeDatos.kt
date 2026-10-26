@@ -29,13 +29,22 @@ object BaseDeDatos {
     // Grupo de conexiones abiertas que se "prestan" a cada petición.
     private lateinit var pool: HikariDataSource
 
-    // Lee db.properties, se conecta a MySQL y prepara las tablas.
+    // Lee los datos de MySQL, se conecta y prepara las tablas.
+    // En la nube (Render) vienen de las variables DB_URL, DB_USER y DB_PASSWORD; en la PC, de db.properties.
     fun iniciar() {
-        val archivo = File("db.properties")
-        if (!archivo.exists()) {
-            error("No existe db.properties. Copia db.properties.example como db.properties y pon tus datos de MySQL.")
+        val urlNube = System.getenv("DB_URL")
+        val props = Properties()
+        if (urlNube != null) {
+            props.setProperty("db.url", urlNube)
+            props.setProperty("db.user", System.getenv("DB_USER"))
+            props.setProperty("db.password", System.getenv("DB_PASSWORD"))
+        } else {
+            val archivo = File("db.properties")
+            if (!archivo.exists()) {
+                error("No existe db.properties. Copia db.properties.example como db.properties y pon tus datos de MySQL.")
+            }
+            archivo.inputStream().use { props.load(it) }
         }
-        val props = Properties().apply { archivo.inputStream().use { load(it) } }
         val config = HikariConfig().apply {
             jdbcUrl = props.getProperty("db.url")
             username = props.getProperty("db.user")

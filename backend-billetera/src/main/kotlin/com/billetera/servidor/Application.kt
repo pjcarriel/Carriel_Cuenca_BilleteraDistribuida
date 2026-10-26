@@ -27,7 +27,8 @@ import kotlin.time.Duration.Companion.seconds
 private val log = LoggerFactory.getLogger("Servidor")
 
 // Puerto del servidor. Desde el emulador se entra con http://10.0.2.2:8090
-const val PUERTO = 8090
+// En la nube (Render) el puerto lo asigna la plataforma en la variable PORT.
+val PUERTO = System.getenv("PORT")?.toIntOrNull() ?: 8090
 
 // Lo primero que se ejecuta: conecta MySQL y enciende el servidor.
 fun main() {
