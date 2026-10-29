@@ -15,7 +15,6 @@ import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -23,6 +22,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.carriel_cuenca_billeteradistribuida.data.local.SesionEntity
@@ -75,18 +75,20 @@ fun BilleteraApp(
     val snackbarHostState = remember { SnackbarHostState() }
     var mensajeEsError by remember { mutableStateOf(false) }      // true = rojo, false = verde.
 
-    // Al entrar: conectarse al servidor y mostrar el saludo.
+    // Al entrar: mostrar el saludo.
     LaunchedEffect(Unit) {
-        viewModel.iniciarConexion()
         saludo?.let { viewModel.mostrarMensaje(it); onSaludoMostrado() }
     }
     // Si llega dinero, cuenta como actividad (la sesión no se cierra).
     LaunchedEffect(Unit) {
         viewModel.transferenciasRecibidas.collect { onActividad() }
     }
-    // Al salir de la billetera: cortar la conexión en tiempo real.
-    DisposableEffect(Unit) {
-        onDispose { viewModel.detenerTiempoReal() }
+    // Conectado solo mientras la app está en pantalla: al ir a segundo plano (Inicio, otra app,
+    // pantalla bloqueada) o salir de la billetera se corta la conexión, así el servidor no cuenta
+    // nodos que nadie está usando. Al volver se reconecta y se pone al día con saldo e historial.
+    LifecycleStartEffect(Unit) {
+        viewModel.iniciarConexion()
+        onStopOrDispose { viewModel.detenerTiempoReal() }
     }
 
     // Muestra abajo el resultado de cada operación: verde = éxito, rojo = error.
