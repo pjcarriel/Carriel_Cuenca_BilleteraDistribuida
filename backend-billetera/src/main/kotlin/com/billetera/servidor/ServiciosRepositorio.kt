@@ -107,7 +107,14 @@ object ServiciosRepositorio {
         if (titular.length !in 3..100) throw datoInvalido("Escribe el nombre del titular (3 a 100 caracteres)")
         if (periodo.length !in 3..20) throw datoInvalido("Escribe el periodo (ej. Diciembre 2026)")
         val monto = validarMonto(req.monto).setScale(2, RoundingMode.HALF_UP)
-        BaseDeDatos.transaccion { con -> validarServicio(con, servicio) }
+        BaseDeDatos.transaccion { con ->
+            validarServicio(con, servicio)
+            // Una persona no puede tener dos facturas del mismo servicio y del mismo mes.
+            con.prepareStatement("SELECT codigo FROM contratos WHERE cedula = ? AND servicio = ? AND periodo = ? LIMIT 1").use { ps ->
+                ps.setString(1, cedula); ps.setString(2, servicio); ps.setString(3, periodo)
+                ps.executeQuery().use { rs -> if (rs.next()) throw facturaRepetida(servicio, periodo, rs.getString("codigo")) }
+            }
+        }
         val prefijo = PREFIJOS[servicio] ?: servicio.take(2)
         // Código = letras del servicio + 6 números al azar; si ya existe, prueba otro (hasta 5 veces).
         repeat(5) {

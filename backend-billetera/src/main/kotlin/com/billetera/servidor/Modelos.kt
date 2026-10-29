@@ -165,7 +165,9 @@ fun saldoInsuficiente(saldo: Double, monto: Double) = ErrorNegocio(HttpStatusCod
 fun usuarioExiste(usuario: String) = ErrorNegocio(HttpStatusCode.Conflict, "USUARIO_EXISTE", "El usuario '$usuario' ya está registrado")
 // 403: tiene sesión, pero no tiene permiso.
 fun sinPermiso() = ErrorNegocio(HttpStatusCode.Forbidden, "SIN_PERMISO", "Solo el usuario laboratorio puede administrar los servicios")
-// Cédula inválida, servicio repetido o factura ya pagada.
+// Cédula inválida, servicio repetido, factura ya pagada o factura repetida (mismo mes).
 fun cedulaInvalida() = ErrorNegocio(HttpStatusCode.BadRequest, "CEDULA_INVALIDA", "La cédula no es válida")
 fun servicioExiste(codigo: String) = ErrorNegocio(HttpStatusCode.Conflict, "SERVICIO_EXISTE", "Ya existe un servicio con el código $codigo")
 fun facturaPagada(codigo: String) = ErrorNegocio(HttpStatusCode.Conflict, "FACTURA_PAGADA", "La factura del contrato $codigo ya fue pagada")
+fun facturaRepetida(servicio: String, periodo: String, codigo: String) = ErrorNegocio(HttpStatusCode.Conflict, "FACTURA_REPETIDA",
+    "Esta cédula ya tiene una factura de $servicio de $periodo (contrato $codigo)")
